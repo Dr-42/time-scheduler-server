@@ -187,6 +187,10 @@ pub async fn get_currentblockname(
             .body("".to_string())
             .unwrap()
     } else {
+        if !std::path::Path::new("currentblockname.txt").exists() {
+            std::fs::File::create("currentblockname.txt").unwrap();
+            std::fs::write("currentblockname.txt", "Setting Up for first use").unwrap();
+        }
         let current_block_name = std::fs::read_to_string("currentblockname.txt");
         if let Ok(current_block_name) = current_block_name {
             Response::builder()
