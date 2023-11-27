@@ -1,16 +1,10 @@
-use axum::{
-    extract::State,
-    headers::{authorization::Bearer, Authorization},
-    http::{Response, StatusCode},
-    routing::get,
-    Json, Router, TypedHeader,
-};
-use axum_macros::debug_handler;
+use axum::{routing::get, Router};
 use sha256::digest;
 use std::{env, path::Path};
 
 pub mod blocktype;
 pub mod duration;
+pub mod handlers;
 pub mod time;
 pub mod timeblock;
 
@@ -55,119 +49,25 @@ async fn main() -> Result<()> {
 
     let state = AppState { password_hash };
     let routes = Router::new()
-        .route("/blocktypes", get(get_blocktypes).post(post_blocktypes))
-        .route("/timeblocks", get(get_timeblocks).post(post_timeblocks))
+        .route(
+            "/blocktypes",
+            get(handlers::get_blocktypes).post(handlers::post_blocktypes),
+        )
+        .route(
+            "/timeblocks",
+            get(handlers::get_timeblocks).post(handlers::post_timeblocks),
+        )
         .route(
             "/currentblockname",
-            get(get_currentblockname).post(post_currentblockname),
+            get(handlers::get_currentblockname).post(handlers::post_currentblockname),
         )
         .route(
             "/currentblocktype",
-            get(get_currentblocktype).post(post_currentblocktype),
+            get(handlers::get_currentblocktype).post(handlers::post_currentblocktype),
         );
     let router_service = routes.with_state(state).into_make_service();
     axum::Server::bind(&ip.parse()?)
         .serve(router_service)
         .await?;
     Ok(())
-}
-
-async fn get_blocktypes(
-    State(state): State<AppState>,
-    auth_header: TypedHeader<Authorization<Bearer>>,
-) -> Response<String> {
-    let password_hash = state.password_hash.clone();
-    if auth_header.token() != password_hash {
-        Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .body("".to_string())
-            .unwrap()
-    } else {
-        let blocktypes = blocktype::BlockType::load();
-        if let Ok(blocktypes) = blocktypes {
-            Response::builder()
-                .status(StatusCode::OK)
-                .header("Content-Type", "application/json")
-                .body(serde_json::to_string(&blocktypes).unwrap())
-                .unwrap()
-        } else {
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body("".to_string())
-                .unwrap()
-        }
-    }
-}
-
-async fn post_blocktypes(
-    State(state): State<AppState>,
-    auth_header: TypedHeader<Authorization<Bearer>>,
-    body: Json<String>,
-) -> Response<String> {
-    let password_hash = state.password_hash.clone();
-    if auth_header.token() != password_hash {
-        Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .body("".to_string())
-            .unwrap()
-    } else {
-        let blocktype = serde_json::from_str::<blocktype::BlockType>(&body.0);
-        if let Ok(blocktype) = blocktype {
-            let blocktypes = blocktype::BlockType::load();
-            if let Ok(mut blocktypes) = blocktypes {
-                blocktypes.push(blocktype);
-                let result = blocktype::BlockType::save();
-                if result.is_ok() {
-                    Response::builder()
-                        .status(StatusCode::OK)
-                        .body("".to_string())
-                        .unwrap()
-                } else {
-                    Response::builder()
-                        .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .body("".to_string())
-                        .unwrap()
-                }
-            } else {
-                Response::builder()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body("".to_string())
-                    .unwrap()
-            }
-        } else {
-            Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .body("".to_string())
-                .unwrap()
-        }
-    }
-}
-
-async fn get_timeblocks() -> String {
-    unimplemented!()
-}
-
-async fn post_timeblocks() -> String {
-    unimplemented!()
-}
-
-#[debug_handler]
-async fn get_currentblockname(
-    State(state): State<AppState>,
-    auth_header: TypedHeader<Authorization<Bearer>>,
-) -> Response<String> {
-    let password_hash = state.password_hash.clone();
-    todo!()
-}
-
-async fn post_currentblockname() -> String {
-    unimplemented!()
-}
-
-async fn get_currentblocktype() -> String {
-    unimplemented!()
-}
-
-async fn post_currentblocktype() -> String {
-    unimplemented!()
 }
