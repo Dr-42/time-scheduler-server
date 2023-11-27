@@ -1,4 +1,4 @@
-use crate::{blocktype, time::Time, timeblock, AppState};
+use crate::{blocktype, duration::Duration, time::Time, timeblock, AppState, Result};
 use axum::{
     extract::{Query, State},
     headers::{authorization::Bearer, Authorization},
@@ -7,6 +7,7 @@ use axum::{
 };
 use axum_macros::debug_handler;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 pub async fn get_blocktypes(
     State(state): State<AppState>,
@@ -296,9 +297,19 @@ pub async fn post_currentblocktype(
     }
 }
 
+struct AnalysisQuery {
+    startday: u8,
+    startmonth: u8,
+    startyear: u32,
+    endday: u8,
+    endmonth: u8,
+    endyear: u32,
+}
+
 pub async fn get_analysis(
     State(state): State<AppState>,
     auth_header: TypedHeader<Authorization<Bearer>>,
+    query: Query<AnalysisQuery>,
 ) -> Response<String> {
     let password_hash = state.password_hash.clone();
     if auth_header.token() != password_hash {
@@ -307,6 +318,124 @@ pub async fn get_analysis(
             .body("".to_string())
             .unwrap()
     } else {
-        unimplemented!()
+        let start_time = Time::new(query.startyear, query.startmonth, query.startday, 0, 0, 0);
+        let end_time = Time::new(query.endyear, query.endmonth, query.endday, 23, 59, 59);
+        if let Err(e) = start_time {
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(e.to_string())
+                .unwrap();
+        }
+        if let Err(e) = end_time {
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body(e.to_string())
+                .unwrap();
+        }
+
+        let start_time = start_time.unwrap();
+        let end_time = end_time.unwrap();
+        let analysis = get_analysis_data(start_time, end_time);
+        if let Err(e) = analysis {
+            return Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(e.to_string())
+                .unwrap();
+        }
+        let analysis = serde_json::to_string(&analysis.unwrap());
+        if let Ok(analysis) = analysis {
+            Response::builder()
+                .status(StatusCode::OK)
+                .header("Content-Type", "application/json")
+                .body(analysis)
+                .unwrap()
+        } else {
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("".to_string())
+                .unwrap()
+        }
     }
+}
+
+#[allow(non_snake_case)]
+#[derive(Serialize, Deserialize)]
+struct Trend {
+    day: Time,
+    timeSpent: Duration,
+    blockTypeID: u8,
+}
+
+#[derive(Serialize, Deserialize)]
+struct Analysis {
+    percentages: Vec<f32>,
+    trends: Vec<Trend>,
+}
+
+fn get_analysis_data(start_time: Time, end_time: Time) -> Result<Analysis> {
+    let mut blocktypes = blocktype::BlockType::load()?;
+    blocktypes.sort_by(|a, b| a.id.cmp(&b.id));
+
+    let mut analysis: Analysis;
+
+    let mut iter_time = start_time.clone();
+    let mut durations: HashMap<u8, Duration> = HashMap::new();
+
+    while iter_time.before(&end_time) {
+        let blocks = timeblock::TimeBlock::get_day_timeblocks(&iter_time)?;
+        for blocktype in &blocktypes {
+            if blocktypes.len() == 0 {
+                continue;
+            }
+
+            let mut time_spent = Duration {
+                seconds: 0,
+                minutes: 0,
+                hours: 0,
+            };
+            for block in &blocks {
+                if block.blockTypeId == blocktype.id {
+                    time_spent += block.duration();
+                }
+            }
+
+            let trend = Trend {
+                day: iter_time.clone(),
+                timeSpent: time_spent,
+                blockTypeID: blocktype.id,
+            };
+            analysis.trends.push(trend);
+            if durations.contains_key(&blocktype.id) {
+                durations.insert(blocktype.id, durations[&blocktype.id] + time_spent);
+            } else {
+                durations.insert(blocktype.id, time_spent);
+            }
+        }
+
+        iter_time += Duration::from_seconds(24 * 60 * 60);
+    }
+
+    let mut total_time = Duration {
+        seconds: 0,
+        minutes: 0,
+        hours: 0,
+    };
+    for (_, duration) in &durations {
+        total_time += *duration;
+    }
+
+    let mut percentage_map: HashMap<u8, f32> = HashMap::new();
+    for (blocktype_id, duration) in &durations {
+        let percentage = (duration.to_seconds() as f32) / (total_time.to_seconds() as f32);
+        percentage_map.insert(*blocktype_id, percentage);
+    }
+
+    let mut percentages: Vec<f32> = Vec::new();
+    percentages.resize(blocktypes.len(), 0.0);
+    for (blocktype_id, percentage) in &percentage_map {
+        percentages[*blocktype_id as usize] = *percentage;
+    }
+
+    analysis.percentages = percentages;
+    Ok(analysis)
 }

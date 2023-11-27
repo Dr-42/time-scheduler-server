@@ -1,6 +1,6 @@
 use crate::{duration::Duration, Result};
 use serde::{Deserialize, Serialize};
-use std::ops::Add;
+use std::ops::{Add, AddAssign};
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Time {
@@ -170,6 +170,12 @@ impl Add<Duration> for Time {
     fn add(self, rhs: Duration) -> Self::Output {
         let seconds = self.to_iso() + rhs.to_seconds();
         Time::from_iso(seconds)
+    }
+}
+
+impl AddAssign<Duration> for Time {
+    fn add_assign(&mut self, rhs: Duration) {
+        *self = *self + rhs;
     }
 }
 

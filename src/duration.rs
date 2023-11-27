@@ -48,3 +48,13 @@ impl ops::Sub for Duration {
         }
     }
 }
+
+impl ops::AddAssign for Duration {
+    fn add_assign(&mut self, other: Self) {
+        *self = Self {
+            seconds: self.seconds + other.seconds,
+            minutes: self.minutes + other.minutes,
+            hours: self.hours + other.hours,
+        }
+    }
+}
