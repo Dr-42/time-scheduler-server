@@ -35,21 +35,21 @@ impl TimeBlock {
         false
     }
 
-    pub fn get_day_timeblocks(&self) -> Result<Vec<Self>> {
+    pub fn get_day_timeblocks(time: &Time) -> Result<Vec<Self>> {
         if !std::path::Path::new("timeblocks").exists() {
             std::fs::create_dir("timeblocks")?;
         }
-        if !std::path::Path::new(&self.endTime.filename()).exists() {
-            std::fs::File::create(self.endTime.filename())?;
+        if !std::path::Path::new(&time.filename()).exists() {
+            std::fs::File::create(time.filename())?;
             return Ok(Vec::new());
         }
         let timeblocks =
-            serde_json::from_str::<Vec<Self>>(&std::fs::read_to_string(self.endTime.filename())?)?;
+            serde_json::from_str::<Vec<Self>>(&std::fs::read_to_string(time.filename())?)?;
         Ok(timeblocks)
     }
 
     pub fn save(&self) -> Result<()> {
-        let mut timeblocks = self.get_day_timeblocks()?;
+        let mut timeblocks = Self::get_day_timeblocks(&self.endTime)?;
         if self.check_overlaps(&timeblocks) {
             return Err("Timeblock overlaps with another timeblock".into());
         }

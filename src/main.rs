@@ -23,8 +23,8 @@ macro_rules! input {
 }
 
 #[derive(Debug, Clone)]
-struct AppState {
-    password_hash: String,
+pub struct AppState {
+    pub password_hash: String,
 }
 
 #[tokio::main]
@@ -64,7 +64,8 @@ async fn main() -> Result<()> {
         .route(
             "/currentblocktype",
             get(handlers::get_currentblocktype).post(handlers::post_currentblocktype),
-        );
+        )
+        .route("/analysis", get(handlers::get_analysis));
     let router_service = routes.with_state(state).into_make_service();
     axum::Server::bind(&ip.parse()?)
         .serve(router_service)
