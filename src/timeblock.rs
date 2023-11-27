@@ -49,6 +49,31 @@ impl TimeBlock {
     }
 
     pub fn save(&self) -> Result<()> {
+        // Check if time block started earlier than today's date
+        if self.startTime.day < self.endTime.day {
+            let mut prev_day_block = self.clone();
+            prev_day_block.endTime.day = prev_day_block.startTime.day;
+            prev_day_block.endTime.hour = 23;
+            prev_day_block.endTime.minute = 59;
+            prev_day_block.endTime.second = 59;
+            prev_day_block.save()?;
+
+            let mut next_day_block = self.clone();
+            next_day_block.startTime.day = next_day_block.endTime.day;
+            next_day_block.startTime.hour = 0;
+            next_day_block.startTime.minute = 0;
+            next_day_block.startTime.second = 0;
+            next_day_block.save()?;
+            return Ok(());
+        }
+        // Check if the start time is 1945/1/1 1:1:1
+        // If so, set the start time to the endtime of the previous day's last time block
+        if self.startTime == Time::new(1945, 1, 1, 1, 1, 1).unwrap() {
+            let mut prev_day_block = self.clone();
+            prev_day_block.endTime = prev_day_block.startTime;
+            prev_day_block.save()?;
+            return Ok(());
+        }
         let mut timeblocks = Self::get_day_timeblocks(&self.endTime)?;
         if self.check_overlaps(&timeblocks) {
             return Err("Timeblock overlaps with another timeblock".into());

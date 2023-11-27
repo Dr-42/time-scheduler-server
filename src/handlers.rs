@@ -143,6 +143,7 @@ pub async fn get_timeblocks(
 pub async fn post_timeblocks(
     State(state): State<AppState>,
     auth_header: TypedHeader<Authorization<Bearer>>,
+    body: Json<String>,
 ) -> Response<String> {
     let password_hash = state.password_hash.clone();
     if auth_header.token() != password_hash {
@@ -151,7 +152,26 @@ pub async fn post_timeblocks(
             .body("".to_string())
             .unwrap()
     } else {
-        unimplemented!()
+        let timeblock = serde_json::from_str::<timeblock::TimeBlock>(&body.0);
+        if let Ok(timeblock) = timeblock {
+            let result = timeblock.save();
+            if result.is_ok() {
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .body("".to_string())
+                    .unwrap()
+            } else {
+                Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body("".to_string())
+                    .unwrap()
+            }
+        } else {
+            Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body("".to_string())
+                .unwrap()
+        }
     }
 }
 
@@ -167,13 +187,26 @@ pub async fn get_currentblockname(
             .body("".to_string())
             .unwrap()
     } else {
-        unimplemented!()
+        let current_block_name = std::fs::read_to_string("currentblockname.txt");
+        if let Ok(current_block_name) = current_block_name {
+            Response::builder()
+                .status(StatusCode::OK)
+                .header("Content-Type", "application/json")
+                .body(current_block_name)
+                .unwrap()
+        } else {
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("".to_string())
+                .unwrap()
+        }
     }
 }
 
 pub async fn post_currentblockname(
     State(state): State<AppState>,
     auth_header: TypedHeader<Authorization<Bearer>>,
+    body: Json<String>,
 ) -> Response<String> {
     let password_hash = state.password_hash.clone();
     if auth_header.token() != password_hash {
@@ -182,7 +215,18 @@ pub async fn post_currentblockname(
             .body("".to_string())
             .unwrap()
     } else {
-        unimplemented!()
+        let result = std::fs::write("currentblockname.txt", body.0);
+        if result.is_ok() {
+            Response::builder()
+                .status(StatusCode::OK)
+                .body("".to_string())
+                .unwrap()
+        } else {
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("".to_string())
+                .unwrap()
+        }
     }
 }
 
@@ -197,13 +241,30 @@ pub async fn get_currentblocktype(
             .body("".to_string())
             .unwrap()
     } else {
-        unimplemented!()
+        if !std::path::Path::new("currentblocktype.txt").exists() {
+            std::fs::File::create("currentblocktype.txt").unwrap();
+            std::fs::write("currentblocktype.txt", "0").unwrap();
+        }
+        let current_block_type = std::fs::read_to_string("currentblocktype.txt");
+        if let Ok(current_block_type) = current_block_type {
+            Response::builder()
+                .status(StatusCode::OK)
+                .header("Content-Type", "application/json")
+                .body(current_block_type)
+                .unwrap()
+        } else {
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("".to_string())
+                .unwrap()
+        }
     }
 }
 
 pub async fn post_currentblocktype(
     State(state): State<AppState>,
     auth_header: TypedHeader<Authorization<Bearer>>,
+    body: Json<String>,
 ) -> Response<String> {
     let password_hash = state.password_hash.clone();
     if auth_header.token() != password_hash {
@@ -212,7 +273,18 @@ pub async fn post_currentblocktype(
             .body("".to_string())
             .unwrap()
     } else {
-        unimplemented!()
+        let result = std::fs::write("currentblocktype.txt", body.0);
+        if result.is_ok() {
+            Response::builder()
+                .status(StatusCode::OK)
+                .body("".to_string())
+                .unwrap()
+        } else {
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("".to_string())
+                .unwrap()
+        }
     }
 }
 

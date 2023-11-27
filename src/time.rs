@@ -34,9 +34,6 @@ impl Time {
         if second > 59 {
             return Err("Invalid second".into());
         }
-        if year < 1970 {
-            return Err("Year before UNIX start".into());
-        }
         Ok(Self {
             year,
             month,

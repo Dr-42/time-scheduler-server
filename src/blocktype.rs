@@ -23,6 +23,11 @@ impl BlockType {
     pub fn save() -> Result<()> {
         if !std::path::Path::new("blocktypes.json").exists() {
             std::fs::File::create("blocktypes.json")?;
+            let system_block = Self::new(0, "System".to_string(), Color { r: 0, g: 0, b: 255 });
+            serde_json::to_writer_pretty(
+                std::fs::File::create("blocktypes.json")?,
+                &[system_block],
+            )?;
         }
         let blocktypes = Self::load()?;
         if Self::check_identical(&blocktypes) {
