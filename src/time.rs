@@ -1,4 +1,4 @@
-use crate::duration::Duration;
+use crate::{duration::Duration, Result};
 use serde::{Deserialize, Serialize};
 use std::ops::Add;
 
@@ -13,15 +13,38 @@ pub struct Time {
 }
 
 impl Time {
-    pub fn new(year: u32, month: u8, day: u8, hour: u8, minute: u8, second: u8) -> Self {
-        Self {
+    pub fn new(year: u32, month: u8, day: u8, hour: u8, minute: u8, second: u8) -> Result<Self> {
+        if !matches!(month, 1..=12) {
+            return Err("Invalid month".into());
+        }
+        let days_month = if Time::is_leap_year(year) {
+            [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 31, 31]
+        } else {
+            [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 31, 31]
+        };
+        if day < 1 || day > days_month[month as usize - 1] {
+            return Err("Invalid day".into());
+        }
+        if hour > 23 {
+            return Err("Invalid hour".into());
+        }
+        if minute > 59 {
+            return Err("Invalid minute".into());
+        }
+        if second > 59 {
+            return Err("Invalid second".into());
+        }
+        if year < 1970 {
+            return Err("Year before UNIX start".into());
+        }
+        Ok(Self {
             year,
             month,
             day,
             hour,
             minute,
             second,
-        }
+        })
     }
 
     fn is_leap_year(year: u32) -> bool {
@@ -29,7 +52,7 @@ impl Time {
     }
 
     pub fn to_iso(&self) -> u64 {
-        let unix_start = Time::new(1970, 1, 1, 0, 0, 0);
+        let unix_start = Time::new(1970, 1, 1, 0, 0, 0).unwrap();
         let days_month = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
         const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
         let mut days = 0;
@@ -51,7 +74,7 @@ impl Time {
     }
 
     pub fn from_iso(seconds: u64) -> Self {
-        let unix_start = Time::new(1970, 1, 1, 0, 0, 0);
+        let unix_start = Time::new(1970, 1, 1, 0, 0, 0).unwrap();
         let mut seconds = seconds;
         let mut year = unix_start.year;
         let mut month = 1;
