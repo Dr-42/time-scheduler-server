@@ -20,15 +20,14 @@ impl BlockType {
         Self { id, name, color }
     }
 
-    pub fn save(&self) -> Result<()> {
+    pub fn save() -> Result<()> {
         if !std::path::Path::new("blocktypes.json").exists() {
             std::fs::File::create("blocktypes.json")?;
         }
-        let mut blocktypes = Self::load()?;
-        if self.check_identical(&blocktypes) {
+        let blocktypes = Self::load()?;
+        if Self::check_identical(&blocktypes) {
             return Err("Blocktype already exists".into());
         }
-        blocktypes.push(self.clone());
         serde_json::to_writer_pretty(std::fs::File::create("blocktypes.json")?, &blocktypes)?;
         Ok(())
     }
@@ -43,17 +42,19 @@ impl BlockType {
         Ok(blocktypes)
     }
 
-    fn check_identical(&self, blocktypes: &[Self]) -> bool {
+    fn check_identical(blocktypes: &[Self]) -> bool {
         for blocktype in blocktypes {
-            if self.id == blocktype.id {
-                eprintln!("Something went wrong: Blocktype ID already exists");
-                return true;
-            }
-            if self.name == blocktype.name {
-                return true;
-            }
-            if self.color == blocktype.color {
-                return true;
+            for sl in blocktypes {
+                if blocktype.id == sl.id {
+                    eprintln!("Something went wrong: Blocktype ID already exists");
+                    return true;
+                }
+                if blocktype.name == sl.name {
+                    return true;
+                }
+                if blocktype.color == sl.color {
+                    return true;
+                }
             }
         }
         false
