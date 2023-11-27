@@ -193,6 +193,8 @@ pub async fn get_currentblockname(
         }
         let current_block_name = std::fs::read_to_string("currentblockname.txt");
         if let Ok(current_block_name) = current_block_name {
+            let current_block_name = current_block_name.trim().to_string();
+            let current_block_name = format!("\"{}\"", current_block_name);
             Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/json")
@@ -251,10 +253,12 @@ pub async fn get_currentblocktype(
         }
         let current_block_type = std::fs::read_to_string("currentblocktype.txt");
         if let Ok(current_block_type) = current_block_type {
+            let current_block_type = current_block_type.trim().to_string();
+            let current_block_type = format!("\"{}\"", current_block_type);
             Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", "application/json")
-                .body(current_block_type)
+                .body(serde_json::from_str(&current_block_type).unwrap())
                 .unwrap()
         } else {
             Response::builder()
