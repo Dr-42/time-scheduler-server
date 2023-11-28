@@ -29,7 +29,7 @@ pub async fn get_blocktypes(
         let blocktypes = blocktype::BlockType::load();
         if let Ok(blocktypes) = blocktypes {
             Response::builder()
-                .status(StatusCode::CREATED)
+                .status(StatusCode::OK)
                 .header("Content-Type", "application/json")
                 .body(serde_json::to_string(&blocktypes).unwrap())
                 .unwrap()
@@ -68,7 +68,7 @@ pub async fn post_blocktypes(
                     .unwrap()
             } else {
                 Response::builder()
-                    .status(StatusCode::OK)
+                    .status(StatusCode::CREATED)
                     .body("".to_string())
                     .unwrap()
             }
@@ -164,7 +164,7 @@ pub async fn post_timeblocks(
                 .unwrap()
         } else {
             Response::builder()
-                .status(StatusCode::OK)
+                .status(StatusCode::CREATED)
                 .body("".to_string())
                 .unwrap()
         }
@@ -220,7 +220,7 @@ pub async fn post_currentblockname(
         let result = std::fs::write("currentblockname.txt", body.0);
         if result.is_ok() {
             Response::builder()
-                .status(StatusCode::OK)
+                .status(StatusCode::CREATED)
                 .body("".to_string())
                 .unwrap()
         } else {
@@ -280,7 +280,7 @@ pub async fn post_currentblocktype(
         let result = std::fs::write("currentblocktype.txt", body.0);
         if result.is_ok() {
             Response::builder()
-                .status(StatusCode::OK)
+                .status(StatusCode::CREATED)
                 .body("".to_string())
                 .unwrap()
         } else {
