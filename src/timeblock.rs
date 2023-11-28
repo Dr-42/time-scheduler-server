@@ -70,6 +70,7 @@ impl TimeBlock {
             let prev_day_timeblocks = Self::get_day_timeblocks(&prev_day)?;
             if prev_day_timeblocks.is_empty() {
                 self.startTime = self.endTime;
+                self.startTime.second -= 1;
             } else {
                 self.startTime = self.endTime;
                 self.startTime.hour = 0;
