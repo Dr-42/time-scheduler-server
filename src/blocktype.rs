@@ -8,7 +8,7 @@ pub struct Color {
     pub b: u8,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct BlockType {
     pub id: u8,
     pub name: String,
@@ -20,7 +20,7 @@ impl BlockType {
         Self { id, name, color }
     }
 
-    pub fn save() -> Result<()> {
+    pub fn save(types: Vec<Self>) -> Result<()> {
         if !std::path::Path::new("blocktypes.json").exists() {
             std::fs::File::create("blocktypes.json")?;
             let system_block = Self::new(0, "System".to_string(), Color { r: 0, g: 0, b: 255 });
@@ -29,11 +29,10 @@ impl BlockType {
                 &[system_block],
             )?;
         }
-        let blocktypes = Self::load()?;
-        if Self::check_identical(&blocktypes) {
+        if Self::check_identical(&types) {
             return Err("Blocktype already exists".into());
         }
-        serde_json::to_writer_pretty(std::fs::File::create("blocktypes.json")?, &blocktypes)?;
+        serde_json::to_writer_pretty(std::fs::File::create("blocktypes.json")?, &types)?;
         Ok(())
     }
 
@@ -48,20 +47,6 @@ impl BlockType {
     }
 
     fn check_identical(blocktypes: &[Self]) -> bool {
-        for blocktype in blocktypes {
-            for sl in blocktypes {
-                if blocktype.id == sl.id {
-                    eprintln!("Something went wrong: Blocktype ID already exists");
-                    return true;
-                }
-                if blocktype.name == sl.name {
-                    return true;
-                }
-                if blocktype.color == sl.color {
-                    return true;
-                }
-            }
-        }
-        false
+        (1..blocktypes.len()).any(|i| blocktypes[i..].contains(&blocktypes[i - 1]))
     }
 }

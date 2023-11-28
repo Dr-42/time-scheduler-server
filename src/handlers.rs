@@ -1,5 +1,5 @@
 use crate::{
-    blocktype,
+    blocktype::{self, BlockType},
     duration::Duration,
     time::Time,
     timeblock::{self, TimeBlock},
@@ -45,7 +45,7 @@ pub async fn get_blocktypes(
 pub async fn post_blocktypes(
     State(state): State<AppState>,
     auth_header: TypedHeader<Authorization<Bearer>>,
-    body: Json<String>,
+    body: Json<BlockType>,
 ) -> Response<String> {
     let password_hash = state.password_hash.clone();
     if auth_header.token() != password_hash {
@@ -54,33 +54,27 @@ pub async fn post_blocktypes(
             .body("".to_string())
             .unwrap()
     } else {
-        let blocktype = serde_json::from_str::<blocktype::BlockType>(&body.0);
-        if let Ok(blocktype) = blocktype {
-            let blocktypes = blocktype::BlockType::load();
-            if let Ok(mut blocktypes) = blocktypes {
-                blocktypes.push(blocktype);
-                let result = blocktype::BlockType::save();
-                if result.is_err() {
-                    println!("Error saving blocktypes: {}", result.unwrap_err());
-                    Response::builder()
-                        .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .body("".to_string())
-                        .unwrap()
-                } else {
-                    Response::builder()
-                        .status(StatusCode::OK)
-                        .body("".to_string())
-                        .unwrap()
-                }
-            } else {
+        let mut blocktype = body.0;
+        let blocktypes = blocktype::BlockType::load();
+        if let Ok(mut blocktypes) = blocktypes {
+            blocktype.id = blocktypes.len() as u8;
+            blocktypes.push(blocktype);
+            let result = blocktype::BlockType::save(blocktypes);
+            if result.is_err() {
+                println!("Error saving blocktypes: {}", result.unwrap_err());
                 Response::builder()
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body("".to_string())
+                    .unwrap()
+            } else {
+                Response::builder()
+                    .status(StatusCode::OK)
                     .body("".to_string())
                     .unwrap()
             }
         } else {
             Response::builder()
-                .status(StatusCode::BAD_REQUEST)
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body("".to_string())
                 .unwrap()
         }
