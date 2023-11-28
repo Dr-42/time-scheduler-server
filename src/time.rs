@@ -1,6 +1,6 @@
 use crate::{duration::Duration, Result};
 use serde::{Deserialize, Serialize};
-use std::ops::{Add, AddAssign};
+use std::ops::{Add, AddAssign, Sub, SubAssign};
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Time {
@@ -160,7 +160,7 @@ impl Time {
     }
 
     pub fn before(&self, other: &Time) -> bool {
-        self.to_iso() < other.to_iso()
+        self.to_iso() <= other.to_iso()
     }
 }
 
@@ -176,6 +176,21 @@ impl Add<Duration> for Time {
 impl AddAssign<Duration> for Time {
     fn add_assign(&mut self, rhs: Duration) {
         *self = *self + rhs;
+    }
+}
+
+impl Sub<Duration> for Time {
+    type Output = Self;
+
+    fn sub(self, rhs: Duration) -> Self::Output {
+        let seconds = self.to_iso() - rhs.to_seconds();
+        Time::from_iso(seconds)
+    }
+}
+
+impl SubAssign<Duration> for Time {
+    fn sub_assign(&mut self, rhs: Duration) {
+        *self = *self - rhs;
     }
 }
 

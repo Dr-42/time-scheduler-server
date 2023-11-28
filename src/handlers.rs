@@ -1,4 +1,10 @@
-use crate::{blocktype, duration::Duration, time::Time, timeblock, AppState, Result};
+use crate::{
+    blocktype,
+    duration::Duration,
+    time::Time,
+    timeblock::{self, TimeBlock},
+    AppState, Result,
+};
 use axum::{
     extract::{Query, State},
     headers::{authorization::Bearer, Authorization},
@@ -54,14 +60,15 @@ pub async fn post_blocktypes(
             if let Ok(mut blocktypes) = blocktypes {
                 blocktypes.push(blocktype);
                 let result = blocktype::BlockType::save();
-                if result.is_ok() {
+                if result.is_err() {
+                    println!("Error saving blocktypes: {}", result.unwrap_err());
                     Response::builder()
-                        .status(StatusCode::OK)
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
                         .body("".to_string())
                         .unwrap()
                 } else {
                     Response::builder()
-                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .status(StatusCode::OK)
                         .body("".to_string())
                         .unwrap()
                 }
@@ -144,7 +151,7 @@ pub async fn get_timeblocks(
 pub async fn post_timeblocks(
     State(state): State<AppState>,
     auth_header: TypedHeader<Authorization<Bearer>>,
-    body: Json<String>,
+    body: Json<TimeBlock>,
 ) -> Response<String> {
     let password_hash = state.password_hash.clone();
     if auth_header.token() != password_hash {
@@ -153,23 +160,17 @@ pub async fn post_timeblocks(
             .body("".to_string())
             .unwrap()
     } else {
-        let timeblock = serde_json::from_str::<timeblock::TimeBlock>(&body.0);
-        if let Ok(timeblock) = timeblock {
-            let result = timeblock.save();
-            if result.is_ok() {
-                Response::builder()
-                    .status(StatusCode::OK)
-                    .body("".to_string())
-                    .unwrap()
-            } else {
-                Response::builder()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body("".to_string())
-                    .unwrap()
-            }
+        let mut timeblock = body.0;
+        let result = timeblock.save();
+        if let Err(e) = result {
+            println!("Error saving timeblock: {}", e);
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("".to_string())
+                .unwrap()
         } else {
             Response::builder()
-                .status(StatusCode::BAD_REQUEST)
+                .status(StatusCode::OK)
                 .body("".to_string())
                 .unwrap()
         }
@@ -297,15 +298,17 @@ pub async fn post_currentblocktype(
     }
 }
 
-struct AnalysisQuery {
-    startday: u8,
-    startmonth: u8,
-    startyear: u32,
-    endday: u8,
-    endmonth: u8,
-    endyear: u32,
+#[derive(Serialize, Deserialize)]
+pub struct AnalysisQuery {
+    pub startday: u8,
+    pub startmonth: u8,
+    pub startyear: u32,
+    pub endday: u8,
+    pub endmonth: u8,
+    pub endyear: u32,
 }
 
+#[debug_handler]
 pub async fn get_analysis(
     State(state): State<AppState>,
     auth_header: TypedHeader<Authorization<Bearer>>,
@@ -360,34 +363,29 @@ pub async fn get_analysis(
 
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize)]
-struct Trend {
-    day: Time,
-    timeSpent: Duration,
-    blockTypeID: u8,
+pub struct Trend {
+    pub day: Time,
+    pub timeSpent: Duration,
+    pub blockTypeID: u8,
 }
 
 #[derive(Serialize, Deserialize)]
-struct Analysis {
-    percentages: Vec<f32>,
-    trends: Vec<Trend>,
+pub struct Analysis {
+    pub percentages: Vec<f32>,
+    pub trends: Vec<Trend>,
 }
 
 fn get_analysis_data(start_time: Time, end_time: Time) -> Result<Analysis> {
     let mut blocktypes = blocktype::BlockType::load()?;
     blocktypes.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let mut analysis: Analysis;
-
-    let mut iter_time = start_time.clone();
+    let mut iter_time = start_time;
     let mut durations: HashMap<u8, Duration> = HashMap::new();
+    let mut trends: Vec<Trend> = Vec::new();
 
     while iter_time.before(&end_time) {
         let blocks = timeblock::TimeBlock::get_day_timeblocks(&iter_time)?;
         for blocktype in &blocktypes {
-            if blocktypes.len() == 0 {
-                continue;
-            }
-
             let mut time_spent = Duration {
                 seconds: 0,
                 minutes: 0,
@@ -400,11 +398,11 @@ fn get_analysis_data(start_time: Time, end_time: Time) -> Result<Analysis> {
             }
 
             let trend = Trend {
-                day: iter_time.clone(),
+                day: iter_time,
                 timeSpent: time_spent,
                 blockTypeID: blocktype.id,
             };
-            analysis.trends.push(trend);
+            trends.push(trend);
             if durations.contains_key(&blocktype.id) {
                 durations.insert(blocktype.id, durations[&blocktype.id] + time_spent);
             } else {
@@ -420,7 +418,7 @@ fn get_analysis_data(start_time: Time, end_time: Time) -> Result<Analysis> {
         minutes: 0,
         hours: 0,
     };
-    for (_, duration) in &durations {
+    for duration in durations.values() {
         total_time += *duration;
     }
 
@@ -435,7 +433,8 @@ fn get_analysis_data(start_time: Time, end_time: Time) -> Result<Analysis> {
     for (blocktype_id, percentage) in &percentage_map {
         percentages[*blocktype_id as usize] = *percentage;
     }
-
-    analysis.percentages = percentages;
-    Ok(analysis)
+    Ok(Analysis {
+        percentages,
+        trends,
+    })
 }
