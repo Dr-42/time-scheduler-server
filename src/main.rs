@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
         println!("Usage: {} <port>", args[0]);
     }
 
-    let ip = format!("127.0.0.1:{}", port);
+    let ip = format!("0.0.0.0:{}", port);
 
     if !Path::new("password.txt").exists() {
         let password = input!("Enter a password: ");
