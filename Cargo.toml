@@ -1,7 +1,11 @@
 [package]
 name = "time-scheduler-server"
+description = "A server for the time-scheduler app"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+authors = ["Dr-42"]
+repository = "https://github.com/Dr-42/time-scheduler-server"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
