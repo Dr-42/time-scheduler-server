@@ -29,7 +29,7 @@ pub async fn get_blocktypes(
         let blocktypes = blocktype::BlockType::load();
         if let Ok(blocktypes) = blocktypes {
             Response::builder()
-                .status(StatusCode::OK)
+                .status(StatusCode::CREATED)
                 .header("Content-Type", "application/json")
                 .body(serde_json::to_string(&blocktypes).unwrap())
                 .unwrap()
