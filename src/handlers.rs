@@ -1,434 +1,253 @@
-use crate::{
-    blocktype::{self, BlockType},
-    duration::Duration,
-    time::Time,
-    timeblock::{self, TimeBlock},
-    AppState, Result,
-};
+use std::fmt::Display;
+
 use axum::{
-    extract::{Query, State},
-    headers::{authorization::Bearer, Authorization},
+    body::Body,
+    extract::Query,
     http::{Response, StatusCode},
-    Json, TypedHeader,
+    response::IntoResponse,
+    Json,
 };
-use axum_macros::debug_handler;
+use chrono::{DateTime, Local, NaiveTime};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
-pub async fn get_blocktypes(
-    State(state): State<AppState>,
-    auth_header: TypedHeader<Authorization<Bearer>>,
-) -> Response<String> {
-    let password_hash = state.password_hash.clone();
-    if auth_header.token() != password_hash {
-        Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .body("".to_string())
-            .unwrap()
-    } else {
-        let blocktypes = blocktype::BlockType::load();
-        if let Ok(blocktypes) = blocktypes {
-            Response::builder()
-                .status(StatusCode::OK)
-                .header("Content-Type", "application/json")
-                .body(serde_json::to_string(&blocktypes).unwrap())
-                .unwrap()
-        } else {
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body("".to_string())
-                .unwrap()
+use crate::{
+    analysis::{Analysis, AnalysisError, AnalysisQuery},
+    blocktype::{BlockType, BlockTypeError, NewBlockType, PushNew},
+    currentblock::{CurrentBlock, CurrentBlockError},
+    timeblock::{TimeBlock, TimeBlockError},
+};
+
+pub enum HandlerError {
+    AxumError(axum::http::Error),
+    SerdeError(serde_json::Error),
+    Tokio(tokio::io::Error),
+    Chrono,
+    IdenticalBlockType,
+    InternalRustError,
+}
+
+impl From<axum::http::Error> for HandlerError {
+    fn from(e: axum::http::Error) -> Self {
+        HandlerError::AxumError(e)
+    }
+}
+
+impl From<serde_json::Error> for HandlerError {
+    fn from(e: serde_json::Error) -> Self {
+        HandlerError::SerdeError(e)
+    }
+}
+
+impl From<TimeBlockError> for HandlerError {
+    fn from(e: TimeBlockError) -> Self {
+        match e {
+            TimeBlockError::Serde(error) => HandlerError::SerdeError(error),
+            TimeBlockError::Tokio(error) => HandlerError::Tokio(error),
+            TimeBlockError::Chrono => HandlerError::Chrono,
         }
     }
 }
 
-pub async fn post_blocktypes(
-    State(state): State<AppState>,
-    auth_header: TypedHeader<Authorization<Bearer>>,
-    body: Json<BlockType>,
-) -> Response<String> {
-    let password_hash = state.password_hash.clone();
-    if auth_header.token() != password_hash {
-        Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .body("".to_string())
-            .unwrap()
-    } else {
-        let mut blocktype = body.0;
-        let blocktypes = blocktype::BlockType::load();
-        if let Ok(mut blocktypes) = blocktypes {
-            blocktype.id = blocktypes.len() as u8;
-            blocktypes.push(blocktype);
-            let result = blocktype::BlockType::save(blocktypes);
-            if result.is_err() {
-                println!("Error saving blocktypes: {}", result.unwrap_err());
-                Response::builder()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body("".to_string())
-                    .unwrap()
-            } else {
-                Response::builder()
-                    .status(StatusCode::CREATED)
-                    .body("".to_string())
-                    .unwrap()
-            }
-        } else {
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body("".to_string())
-                .unwrap()
+impl From<CurrentBlockError> for HandlerError {
+    fn from(e: CurrentBlockError) -> Self {
+        match e {
+            CurrentBlockError::Tokio(error) => HandlerError::Tokio(error),
+            CurrentBlockError::Serde(error) => HandlerError::SerdeError(error),
         }
     }
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct GetTimeblocksQuery {
-    year: u32,
-    month: u8,
-    day: u8,
-}
-
-#[debug_handler]
-pub async fn get_timeblocks(
-    State(state): State<AppState>,
-    auth_header: TypedHeader<Authorization<Bearer>>,
-    query: Query<GetTimeblocksQuery>,
-) -> Response<String> {
-    let password_hash = state.password_hash.clone();
-    if auth_header.token() != password_hash {
-        Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .body("".to_string())
-            .unwrap()
-    } else {
-        let req_date = Time::new(query.year, query.month, query.day, 0, 0, 0);
-        if let Err(e) = req_date {
-            return Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .body(e.to_string())
-                .unwrap();
-        }
-        let req_date = req_date.unwrap();
-        let timeblocks = timeblock::TimeBlock::get_day_timeblocks(&req_date);
-        if timeblocks.is_ok() {
-            let timeblocks = timeblocks.unwrap();
-            let time_string = serde_json::to_string(&req_date);
-            if time_string.is_ok() {
-                let timeblocks = serde_json::to_string(&timeblocks);
-                if let Ok(timeblocks) = timeblocks {
-                    Response::builder()
-                        .status(StatusCode::OK)
-                        .header("Content-Type", "application/json")
-                        .body(timeblocks)
-                        .unwrap()
-                } else {
-                    Response::builder()
-                        .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .body("".to_string())
-                        .unwrap()
-                }
-            } else {
-                Response::builder()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body("".to_string())
-                    .unwrap()
-            }
-        } else {
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body("".to_string())
-                .unwrap()
+impl From<BlockTypeError> for HandlerError {
+    fn from(e: BlockTypeError) -> Self {
+        match e {
+            BlockTypeError::Identical => HandlerError::IdenticalBlockType,
+            BlockTypeError::Tokio(error) => HandlerError::Tokio(error),
+            BlockTypeError::Serde(error) => HandlerError::SerdeError(error),
         }
     }
 }
 
-pub async fn post_timeblocks(
-    State(state): State<AppState>,
-    auth_header: TypedHeader<Authorization<Bearer>>,
-    body: Json<TimeBlock>,
-) -> Response<String> {
-    let password_hash = state.password_hash.clone();
-    if auth_header.token() != password_hash {
-        Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .body("".to_string())
-            .unwrap()
-    } else {
-        let mut timeblock = body.0;
-        let result = timeblock.save();
-        if let Err(e) = result {
-            println!("Error saving timeblock: {}", e);
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body("".to_string())
-                .unwrap()
-        } else {
-            Response::builder()
-                .status(StatusCode::CREATED)
-                .body("".to_string())
-                .unwrap()
+impl From<AnalysisError> for HandlerError {
+    fn from(e: AnalysisError) -> Self {
+        match e {
+            AnalysisError::Tokio(error) => HandlerError::Tokio(error),
+            AnalysisError::Serde(error) => HandlerError::SerdeError(error),
+            AnalysisError::Chrono => HandlerError::Chrono,
+            AnalysisError::BlockTypeIdentical => HandlerError::IdenticalBlockType,
         }
     }
 }
 
-#[debug_handler]
-pub async fn get_currentblockname(
-    State(state): State<AppState>,
-    auth_header: TypedHeader<Authorization<Bearer>>,
-) -> Response<String> {
-    let password_hash = state.password_hash.clone();
-    if auth_header.token() != password_hash {
-        Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .body("".to_string())
-            .unwrap()
-    } else {
-        if !std::path::Path::new("currentblockname.txt").exists() {
-            std::fs::File::create("currentblockname.txt").unwrap();
-            std::fs::write("currentblockname.txt", "Setting Up for first use").unwrap();
-        }
-        let current_block_name = std::fs::read_to_string("currentblockname.txt");
-        if let Ok(current_block_name) = current_block_name {
-            let current_block_name = current_block_name.trim().to_string();
-            let current_block_name = format!("\"{}\"", current_block_name);
+impl IntoResponse for HandlerError {
+    fn into_response(self) -> Response<Body> {
+        // Here if I can't create the body then fuck me
+        #[allow(clippy::unwrap_used)]
+        fn create_error_response<T: Display>(message: T) -> Response<Body> {
+            let status_code = StatusCode::INTERNAL_SERVER_ERROR;
             Response::builder()
-                .status(StatusCode::OK)
-                .header("Content-Type", "application/json")
-                .body(current_block_name)
-                .unwrap()
-        } else {
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body("".to_string())
+                .status(status_code)
+                .body(Body::from(message.to_string()))
                 .unwrap()
         }
-    }
-}
-
-pub async fn post_currentblockname(
-    State(state): State<AppState>,
-    auth_header: TypedHeader<Authorization<Bearer>>,
-    body: Json<String>,
-) -> Response<String> {
-    let password_hash = state.password_hash.clone();
-    if auth_header.token() != password_hash {
-        Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .body("".to_string())
-            .unwrap()
-    } else {
-        let result = std::fs::write("currentblockname.txt", body.0);
-        if result.is_ok() {
-            Response::builder()
-                .status(StatusCode::CREATED)
-                .body("".to_string())
-                .unwrap()
-        } else {
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body("".to_string())
-                .unwrap()
-        }
-    }
-}
-
-pub async fn get_currentblocktype(
-    State(state): State<AppState>,
-    auth_header: TypedHeader<Authorization<Bearer>>,
-) -> Response<String> {
-    let password_hash = state.password_hash.clone();
-    if auth_header.token() != password_hash {
-        Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .body("".to_string())
-            .unwrap()
-    } else {
-        if !std::path::Path::new("currentblocktype.txt").exists() {
-            std::fs::File::create("currentblocktype.txt").unwrap();
-            std::fs::write("currentblocktype.txt", "0").unwrap();
-        }
-        let current_block_type = std::fs::read_to_string("currentblocktype.txt");
-        if let Ok(current_block_type) = current_block_type {
-            let current_block_type = current_block_type.trim().to_string();
-            let current_block_type = format!("\"{}\"", current_block_type);
-            Response::builder()
-                .status(StatusCode::OK)
-                .header("Content-Type", "application/json")
-                .body(serde_json::from_str(&current_block_type).unwrap())
-                .unwrap()
-        } else {
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body("".to_string())
-                .unwrap()
-        }
-    }
-}
-
-pub async fn post_currentblocktype(
-    State(state): State<AppState>,
-    auth_header: TypedHeader<Authorization<Bearer>>,
-    body: Json<String>,
-) -> Response<String> {
-    let password_hash = state.password_hash.clone();
-    if auth_header.token() != password_hash {
-        Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .body("".to_string())
-            .unwrap()
-    } else {
-        let result = std::fs::write("currentblocktype.txt", body.0);
-        if result.is_ok() {
-            Response::builder()
-                .status(StatusCode::CREATED)
-                .body("".to_string())
-                .unwrap()
-        } else {
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body("".to_string())
-                .unwrap()
+        match self {
+            HandlerError::AxumError(e) => create_error_response(e),
+            HandlerError::SerdeError(e) => create_error_response(e),
+            HandlerError::Tokio(e) => create_error_response(e),
+            HandlerError::Chrono => create_error_response("Chrono error"),
+            HandlerError::IdenticalBlockType => create_error_response("Identical block type"),
+            HandlerError::InternalRustError => create_error_response("Internal rust error"),
         }
     }
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct AnalysisQuery {
-    pub startday: u8,
-    pub startmonth: u8,
-    pub startyear: u32,
-    pub endday: u8,
-    pub endmonth: u8,
-    pub endyear: u32,
+pub struct EntireState {
+    blocktypes: Vec<BlockType>,
+    daydata: Vec<TimeBlock>,
+    currentblock: CurrentBlock,
 }
 
-#[debug_handler]
-pub async fn get_analysis(
-    State(state): State<AppState>,
-    auth_header: TypedHeader<Authorization<Bearer>>,
-    query: Query<AnalysisQuery>,
-) -> Response<String> {
-    let password_hash = state.password_hash.clone();
-    if auth_header.token() != password_hash {
-        Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .body("".to_string())
-            .unwrap()
-    } else {
-        let start_time = Time::new(query.startyear, query.startmonth, query.startday, 0, 0, 0);
-        let end_time = Time::new(query.endyear, query.endmonth, query.endday, 23, 59, 59);
-        if let Err(e) = start_time {
-            return Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .body(e.to_string())
-                .unwrap();
-        }
-        if let Err(e) = end_time {
-            return Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .body(e.to_string())
-                .unwrap();
-        }
-
-        let start_time = start_time.unwrap();
-        let end_time = end_time.unwrap();
-        let analysis = get_analysis_data(start_time, end_time);
-        if let Err(e) = analysis {
-            return Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(e.to_string())
-                .unwrap();
-        }
-        let analysis = serde_json::to_string(&analysis.unwrap());
-        if let Ok(analysis) = analysis {
-            Response::builder()
-                .status(StatusCode::OK)
-                .header("Content-Type", "application/json")
-                .body(analysis)
-                .unwrap()
-        } else {
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body("".to_string())
-                .unwrap()
-        }
-    }
-}
-
-#[allow(non_snake_case)]
-#[derive(Serialize, Deserialize)]
-pub struct Trend {
-    pub day: Time,
-    pub timeSpent: Duration,
-    pub blockTypeID: u8,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Analysis {
-    pub percentages: Vec<f32>,
-    pub trends: Vec<Trend>,
-}
-
-fn get_analysis_data(start_time: Time, end_time: Time) -> Result<Analysis> {
-    let mut blocktypes = blocktype::BlockType::load()?;
-    blocktypes.sort_by(|a, b| a.id.cmp(&b.id));
-
-    let mut iter_time = start_time;
-    let mut durations: HashMap<u8, Duration> = HashMap::new();
-    let mut trends: Vec<Trend> = Vec::new();
-
-    while iter_time.before(&end_time) {
-        let blocks = timeblock::TimeBlock::get_day_timeblocks(&iter_time)?;
-        for blocktype in &blocktypes {
-            let mut time_spent = Duration {
-                seconds: 0,
-                minutes: 0,
-                hours: 0,
-            };
-            for block in &blocks {
-                if block.blockTypeId == blocktype.id {
-                    time_spent += block.duration();
-                }
-            }
-
-            let trend = Trend {
-                day: iter_time,
-                timeSpent: time_spent,
-                blockTypeID: blocktype.id,
-            };
-            trends.push(trend);
-            if durations.contains_key(&blocktype.id) {
-                durations.insert(blocktype.id, durations[&blocktype.id] + time_spent);
-            } else {
-                durations.insert(blocktype.id, time_spent);
-            }
-        }
-
-        iter_time += Duration::from_seconds(24 * 60 * 60);
-    }
-
-    let mut total_time = Duration {
-        seconds: 0,
-        minutes: 0,
-        hours: 0,
+pub async fn get_entire_state() -> Result<impl IntoResponse, HandlerError> {
+    println!("Getting home state for today");
+    let blocktypes = BlockType::load().await?;
+    let daydata = TimeBlock::get_day_timeblocks(Local::now().date_naive()).await?;
+    let currentblock = CurrentBlock::get().await?;
+    let entire_state = EntireState {
+        blocktypes,
+        daydata,
+        currentblock,
     };
-    for duration in durations.values() {
-        total_time += *duration;
-    }
 
-    let mut percentage_map: HashMap<u8, f32> = HashMap::new();
-    for (blocktype_id, duration) in &durations {
-        let percentage = (duration.to_seconds() as f32) / (total_time.to_seconds() as f32);
-        percentage_map.insert(*blocktype_id, percentage);
-    }
+    let response_body = serde_json::to_string(&entire_state)?;
+    let status_code = StatusCode::OK;
+    Ok(Response::builder()
+        .status(status_code)
+        .header("Content-Type", "application/json")
+        .body(Body::from(response_body))?)
+}
 
-    let mut percentages: Vec<f32> = Vec::new();
-    percentages.resize(blocktypes.len(), 0.0);
-    for (blocktype_id, percentage) in &percentage_map {
-        percentages[*blocktype_id as usize] = *percentage;
-    }
-    Ok(Analysis {
-        percentages,
-        trends,
-    })
+pub async fn get_blocktypes() -> Result<impl IntoResponse, HandlerError> {
+    println!("Getting block types");
+    let blocktypes = BlockType::load().await?;
+    let response_body = serde_json::to_string(&blocktypes)?;
+    let status_code = StatusCode::OK;
+    Ok(Response::builder()
+        .status(status_code)
+        .header("Content-Type", "application/json")
+        .body(Body::from(response_body))?)
+}
+
+pub async fn new_blocktype(
+    Json(blocktype): Json<NewBlockType>,
+) -> Result<impl IntoResponse, HandlerError> {
+    let mut current_blocks = match BlockType::load().await {
+        Ok(current_blocks) => current_blocks,
+        Err(e) => {
+            let status_code = StatusCode::INTERNAL_SERVER_ERROR;
+            return Ok(Response::builder()
+                .status(status_code)
+                .body(Body::from(e.to_string()))?);
+        }
+    };
+    println!("Saving new block type {:?}", &blocktype);
+    current_blocks.push_new(blocktype);
+    BlockType::save(current_blocks).await?;
+    let status_code = StatusCode::OK;
+    Ok(Response::builder()
+        .status(status_code)
+        .body(Body::from("Block type saved"))?)
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct DayDataQuery {
+    date: DateTime<Local>,
+}
+
+pub async fn get_daydata(
+    Query(day): Query<DayDataQuery>,
+) -> Result<impl IntoResponse, HandlerError> {
+    println!("Getting day data for {:?}", day.date);
+    let timeblocks = TimeBlock::get_day_timeblocks(day.date.date_naive()).await?;
+    let response_body = serde_json::to_string(&timeblocks)?;
+    let status_code = StatusCode::OK;
+    Ok(Response::builder()
+        .status(status_code)
+        .header("Content-Type", "application/json")
+        .body(Body::from(response_body))?)
+}
+
+pub async fn next_timeblock(
+    Json(new_current_block): Json<CurrentBlock>,
+) -> Result<impl IntoResponse, HandlerError> {
+    let time_blocks = TimeBlock::get_day_timeblocks(Local::now().date_naive()).await?;
+    let current_data = CurrentBlock::get().await?;
+    let time_blocks = if time_blocks.is_empty() {
+        // Get previous day
+        TimeBlock::get_day_timeblocks(Local::now().date_naive() - chrono::Duration::days(1)).await?
+    } else {
+        time_blocks
+    };
+    let start_time = if time_blocks.is_empty() {
+        Local::now()
+            .with_time(NaiveTime::from_hms_opt(0, 0, 0).ok_or(HandlerError::Chrono)?)
+            .single()
+            .ok_or(HandlerError::Chrono)?
+    } else {
+        time_blocks
+            .last()
+            .ok_or(HandlerError::InternalRustError)?
+            .end_time
+    };
+    let end_time = Local::now();
+    let timeblock = TimeBlock::new(
+        start_time,
+        end_time,
+        current_data.block_type_id,
+        current_data.current_block_name,
+    );
+    timeblock.save().await?;
+    new_current_block.save().await?;
+
+    let status_code = StatusCode::OK;
+    Ok(Response::builder()
+        .status(status_code)
+        .body(Body::from("Time block saved"))?)
+}
+
+pub async fn change_current_block(
+    Json(current_block): Json<CurrentBlock>,
+) -> Result<impl IntoResponse, HandlerError> {
+    println!("Changing current block to {:?}", current_block);
+    current_block.save().await?;
+    let status_code = StatusCode::OK;
+    Ok(Response::builder()
+        .status(status_code)
+        .body(Body::from("Current block saved"))?)
+}
+
+pub async fn get_current_data() -> Result<impl IntoResponse, HandlerError> {
+    println!("Getting current data");
+    let current_block = CurrentBlock::get().await?;
+    let response_body = serde_json::to_string(&current_block)?;
+    let status_code = StatusCode::OK;
+    Ok(Response::builder()
+        .status(status_code)
+        .header("Content-Type", "application/json")
+        .body(Body::from(response_body))?)
+}
+
+pub async fn get_analysis(
+    Query(query): Query<AnalysisQuery>,
+) -> Result<impl IntoResponse, HandlerError> {
+    println!(
+        "Getting analysis data from {:?} to {:?}",
+        query.start, query.end
+    );
+    let analysis = Analysis::get_analysis_data(query.start, query.end).await?;
+    let response_body = serde_json::to_string(&analysis)?;
+    let status_code = StatusCode::OK;
+    Ok(Response::builder()
+        .status(status_code)
+        .header("Content-Type", "application/json")
+        .body(Body::from(response_body))?)
 }
