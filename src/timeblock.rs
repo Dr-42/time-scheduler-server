@@ -98,11 +98,11 @@ impl TimeBlock {
                 .await
                 .unwrap_or_default();
             // End at 11:59:59 of the start day
-            let end_time = DateTime::from_naive_utc_and_offset(
-                start_day
-                    .and_time(NaiveTime::from_hms_opt(11, 59, 59).ok_or(TimeBlockError::Chrono)?),
-                *Local::now().offset(),
-            );
+            let end_time = start_day
+                .and_time(NaiveTime::from_hms_opt(11, 59, 59).ok_or(TimeBlockError::Chrono)?)
+                .and_local_timezone(Local)
+                .single()
+                .ok_or(TimeBlockError::Chrono)?;
             timeblocks.push(TimeBlock::new(
                 self.start_time,
                 end_time,
@@ -117,10 +117,11 @@ impl TimeBlock {
             };
             let content = serde_json::to_string_pretty(&timeblocks)?;
             tokio::io::AsyncWriteExt::write_all(&mut file, content.as_bytes()).await?;
-            self_clone.start_time = DateTime::from_naive_utc_and_offset(
-                day.and_time(NaiveTime::from_hms_opt(0, 0, 0).ok_or(TimeBlockError::Chrono)?),
-                *Local::now().offset(),
-            )
+            self_clone.start_time = day
+                .and_time(NaiveTime::from_hms_opt(0, 0, 0).ok_or(TimeBlockError::Chrono)?)
+                .and_local_timezone(Local)
+                .single()
+                .ok_or(TimeBlockError::Chrono)?;
         }
         let mut timeblocks = TimeBlock::get_day_timeblocks(day).await.unwrap_or_default();
         timeblocks.push(self_clone);
