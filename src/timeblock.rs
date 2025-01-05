@@ -110,13 +110,8 @@ impl TimeBlock {
                 self.title.clone(),
             ));
             let file_name = format!("timeblocks/{}.json", start_day.format("%Y-%m-%d"));
-            let mut file = if Path::new(&file_name).exists() {
-                tokio::fs::File::open(file_name).await?
-            } else {
-                tokio::fs::File::create(file_name).await?
-            };
             let content = serde_json::to_string_pretty(&timeblocks)?;
-            tokio::io::AsyncWriteExt::write_all(&mut file, content.as_bytes()).await?;
+            tokio::fs::write(file_name, content).await?;
             self_clone.start_time = day
                 .and_time(NaiveTime::from_hms_opt(0, 0, 0).ok_or(TimeBlockError::Chrono)?)
                 .and_local_timezone(Local)
