@@ -99,7 +99,7 @@ impl TimeBlock {
                 .unwrap_or_default();
             // End at 11:59:59 of the start day
             let end_time = start_day
-                .and_time(NaiveTime::from_hms_opt(11, 59, 59).ok_or(TimeBlockError::Chrono)?)
+                .and_time(NaiveTime::from_hms_opt(23, 59, 59).ok_or(TimeBlockError::Chrono)?)
                 .and_local_timezone(Local)
                 .single()
                 .ok_or(TimeBlockError::Chrono)?;
