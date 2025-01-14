@@ -66,8 +66,8 @@ impl PushNew<NewBlockType> for Vec<BlockType> {
 }
 
 impl BlockType {
-    pub async fn save(types: Vec<Self>) -> Result<(), BlockTypeError> {
-        if Self::check_identical(&types) {
+    pub async fn save(types: &[Self]) -> Result<(), BlockTypeError> {
+        if Self::check_identical(types) {
             return Err(BlockTypeError::Identical);
         }
         let contents = serde_json::to_string_pretty(&types)?;
@@ -77,8 +77,13 @@ impl BlockType {
 
     pub async fn load() -> Result<Vec<Self>, BlockTypeError> {
         if !std::path::Path::new("blocktypes.json").exists() {
-            std::fs::File::create("blocktypes.json")?;
-            return Ok(Vec::new());
+            let blocktypes = vec![BlockType {
+                id: 0,
+                name: "System".to_string(),
+                color: Color { r: 0, g: 0, b: 255 },
+            }];
+            BlockType::save(&blocktypes).await?;
+            return Ok(blocktypes);
         }
         let content = tokio::fs::read_to_string("blocktypes.json").await?;
         let blocktypes = serde_json::from_str::<Vec<Self>>(&content)?;

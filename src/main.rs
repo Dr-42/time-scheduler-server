@@ -66,17 +66,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Sends all the data for today. Will be most used
         .route("/state", get(handlers::get_entire_state))
         // Gets the blocktypes
-        .route("/blocktypes", get(handlers::get_blocktypes))
+        .route("/blocktype/get", get(handlers::get_blocktypes))
         // New Blocktype
-        .route("/newblocktype", post(handlers::new_blocktype))
-        // Gets the timeblocks for a spqcified date
-        .route("/daydata", get(handlers::get_daydata))
+        .route("/blocktype/new", post(handlers::new_blocktype))
+        // Gets the timeblocks for a specified date
+        .route("/timeblock/get", get(handlers::get_daydata))
         // Posts a new timeblock, ie user starts a new task
-        .route("/nexttimeblock", post(handlers::next_timeblock))
+        .route("/timeblock/new", post(handlers::next_timeblock))
         // Posts a change to the current timeblock
-        .route("/changecurrentblock", post(handlers::change_current_block))
+        .route("/currentblock/change", post(handlers::change_current_block))
         // Get the current data
-        .route("/getcurrentdata", get(handlers::get_current_data))
+        .route("/currentblock/get", get(handlers::get_current_block))
         // Get analysis for a given date range
         .route("/analysis", get(handlers::get_analysis))
         // Check authorization

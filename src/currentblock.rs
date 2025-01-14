@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::fmt::Display;
+use std::{fmt::Display, path::Path};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CurrentBlock {
@@ -35,6 +35,12 @@ impl From<serde_json::Error> for CurrentBlockError {
 
 impl CurrentBlock {
     pub async fn get() -> Result<Self, CurrentBlockError> {
+        if !Path::new("currentblock.json").exists() {
+            return Ok(CurrentBlock {
+                block_type_id: 0,
+                current_block_name: "Hello for first setup".to_string(),
+            });
+        }
         let currrent_data_file = tokio::fs::read_to_string("currentblock.json").await?;
         let res = serde_json::from_str(&currrent_data_file)?;
         Ok(res)

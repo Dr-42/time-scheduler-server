@@ -151,7 +151,7 @@ pub async fn new_blocktype(
     };
     println!("Saving new block type {:?}", &blocktype);
     current_blocks.push_new(blocktype);
-    BlockType::save(current_blocks).await?;
+    BlockType::save(&current_blocks).await?;
     let status_code = StatusCode::OK;
     Ok(Response::builder()
         .status(status_code)
@@ -225,7 +225,7 @@ pub async fn change_current_block(
         .body(Body::from("Current block saved"))?)
 }
 
-pub async fn get_current_data() -> Result<impl IntoResponse, HandlerError> {
+pub async fn get_current_block() -> Result<impl IntoResponse, HandlerError> {
     println!("Getting current data");
     let current_block = CurrentBlock::get().await?;
     let response_body = serde_json::to_string(&current_block)?;
