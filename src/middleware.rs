@@ -1,12 +1,18 @@
-use axum::{body::Body, extract::State, http::StatusCode, middleware::Next};
+use axum::{
+    body::Body,
+    extract::State,
+    http::{Response, StatusCode},
+    middleware::Next,
+    response::IntoResponse,
+};
 
-use crate::app::AppState;
+use crate::{app::AppState, err::Error, err_with_context};
 
 pub async fn auth_middleware(
     State(app_state): State<AppState>,
     req: axum::http::Request<Body>,
     next: Next,
-) -> Result<axum::response::Response, StatusCode> {
+) -> Result<impl IntoResponse, impl IntoResponse> {
     let headers = req.headers();
     if let Some(auth_header) = headers.get(axum::http::header::AUTHORIZATION) {
         if let Ok(auth_str) = auth_header.to_str() {
@@ -18,5 +24,8 @@ pub async fn auth_middleware(
         }
     }
     println!("Unauthorized request");
-    Err(StatusCode::UNAUTHORIZED)
+    Response::builder()
+        .status(StatusCode::UNAUTHORIZED)
+        .body(Body::from("Unauthorized"))
+        .map_err(|e| err_with_context!(e, "Building for unauthorized request"))
 }

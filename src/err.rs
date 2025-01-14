@@ -51,6 +51,7 @@ pub enum ErrorType {
     Chrono,
     IdenticalBlockType,
     InternalRustError,
+    Unauthorized,
 }
 
 impl Display for ErrorType {
@@ -62,6 +63,7 @@ impl Display for ErrorType {
             ErrorType::Chrono => write!(f, "Chrono error"),
             ErrorType::IdenticalBlockType => write!(f, "Blocktypes Identical"),
             ErrorType::InternalRustError => write!(f, "Internal Rust error"),
+            ErrorType::Unauthorized => write!(f, "Unauthorized Access"),
         }
     }
 }
