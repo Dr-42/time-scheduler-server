@@ -1,33 +1,8 @@
+use crate::{
+    err::{Error, ErrorType},
+    err_with_context,
+};
 use serde::{Deserialize, Serialize};
-
-#[derive(Debug)]
-pub enum BlockTypeError {
-    Identical,
-    Tokio(tokio::io::Error),
-    Serde(serde_json::Error),
-}
-
-impl std::fmt::Display for BlockTypeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BlockTypeError::Identical => write!(f, "Block types are identical"),
-            BlockTypeError::Tokio(e) => write!(f, "Tokio error: {}", e),
-            BlockTypeError::Serde(e) => write!(f, "Serde error: {}", e),
-        }
-    }
-}
-
-impl From<std::io::Error> for BlockTypeError {
-    fn from(e: std::io::Error) -> Self {
-        BlockTypeError::Tokio(e)
-    }
-}
-
-impl From<serde_json::Error> for BlockTypeError {
-    fn from(e: serde_json::Error) -> Self {
-        BlockTypeError::Serde(e)
-    }
-}
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Color {
@@ -66,16 +41,25 @@ impl PushNew<NewBlockType> for Vec<BlockType> {
 }
 
 impl BlockType {
-    pub async fn save(types: &[Self]) -> Result<(), BlockTypeError> {
+    pub async fn save(types: &[Self]) -> Result<(), Error> {
         if Self::check_identical(types) {
-            return Err(BlockTypeError::Identical);
+            return Err(Error {
+                error_type: ErrorType::IdenticalBlockType,
+                file: file!(),
+                line: line!(),
+                column: column!(),
+                additional: None,
+            });
         }
-        let contents = serde_json::to_string_pretty(&types)?;
-        tokio::fs::write("blocktypes.json", contents).await?;
+        let contents = serde_json::to_string_pretty(&types)
+            .map_err(|e| err_with_context!(e, "Serializing to blocktypes.json"))?;
+        tokio::fs::write("blocktypes.json", contents)
+            .await
+            .map_err(|e| err_with_context!(e, "Writing to blocktypes.json"))?;
         Ok(())
     }
 
-    pub async fn load() -> Result<Vec<Self>, BlockTypeError> {
+    pub async fn load() -> Result<Vec<Self>, Error> {
         if !std::path::Path::new("blocktypes.json").exists() {
             let blocktypes = vec![BlockType {
                 id: 0,
@@ -85,8 +69,11 @@ impl BlockType {
             BlockType::save(&blocktypes).await?;
             return Ok(blocktypes);
         }
-        let content = tokio::fs::read_to_string("blocktypes.json").await?;
-        let blocktypes = serde_json::from_str::<Vec<Self>>(&content)?;
+        let content = tokio::fs::read_to_string("blocktypes.json")
+            .await
+            .map_err(|e| err_with_context!(e, "Reading blocktypes.json"))?;
+        let blocktypes = serde_json::from_str::<Vec<Self>>(&content)
+            .map_err(|e| err_with_context!(e, "Deserializing blocktypes.json"))?;
         Ok(blocktypes)
     }
 

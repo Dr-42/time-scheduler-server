@@ -3,8 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, time::Duration};
 
 use crate::{
-    blocktype::{BlockType, BlockTypeError},
-    timeblock::{TimeBlock, TimeBlockError},
+    blocktype::BlockType,
+    err::{Error, ErrorType},
+    err_from_type, err_with_context,
+    timeblock::TimeBlock,
 };
 
 #[derive(Serialize, Deserialize)]
@@ -27,67 +29,11 @@ pub struct Analysis {
     pub blocktypes: Vec<BlockType>,
 }
 
-pub enum AnalysisError {
-    Tokio(tokio::io::Error),
-    Serde(serde_json::Error),
-    Chrono,
-    BlockTypeIdentical,
-}
-
-impl std::fmt::Display for AnalysisError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AnalysisError::Tokio(e) => write!(f, "Tokio error: {}", e),
-            AnalysisError::Serde(e) => write!(f, "Serde error: {}", e),
-            AnalysisError::Chrono => write!(f, "Chrono error"),
-            AnalysisError::BlockTypeIdentical => write!(f, "Identical block type"),
-        }
-    }
-}
-
-impl From<tokio::io::Error> for AnalysisError {
-    fn from(e: tokio::io::Error) -> Self {
-        AnalysisError::Tokio(e)
-    }
-}
-
-impl From<serde_json::Error> for AnalysisError {
-    fn from(e: serde_json::Error) -> Self {
-        AnalysisError::Serde(e)
-    }
-}
-
-impl From<chrono::OutOfRangeError> for AnalysisError {
-    fn from(_: chrono::OutOfRangeError) -> Self {
-        AnalysisError::Chrono
-    }
-}
-
-impl From<BlockTypeError> for AnalysisError {
-    fn from(e: BlockTypeError) -> Self {
-        match e {
-            BlockTypeError::Tokio(e) => AnalysisError::Tokio(e),
-            BlockTypeError::Serde(e) => AnalysisError::Serde(e),
-            BlockTypeError::Identical => AnalysisError::BlockTypeIdentical,
-        }
-    }
-}
-
-impl From<TimeBlockError> for AnalysisError {
-    fn from(e: TimeBlockError) -> Self {
-        match e {
-            TimeBlockError::Tokio(e) => AnalysisError::Tokio(e),
-            TimeBlockError::Serde(e) => AnalysisError::Serde(e),
-            TimeBlockError::Chrono => AnalysisError::Chrono,
-        }
-    }
-}
-
 impl Analysis {
     pub async fn get_analysis_data(
         start_time: DateTime<Local>,
         end_time: DateTime<Local>,
-    ) -> Result<Analysis, AnalysisError> {
+    ) -> Result<Analysis, Error> {
         let start_time = start_time.date_naive();
         let end_time = end_time.date_naive();
         let mut blocktypes = BlockType::load().await?;
@@ -103,7 +49,10 @@ impl Analysis {
                 let mut time_spent = Duration::from_secs(0);
                 for block in &blocks {
                     if block.block_type_id == blocktype.id {
-                        time_spent += block.duration().to_std()?;
+                        time_spent += block
+                            .duration()
+                            .to_std()
+                            .map_err(|e| err_with_context!(e, "Converting duration to std"))?
                     }
                 }
 
@@ -120,7 +69,10 @@ impl Analysis {
                 }
             }
 
-            iter_time += TimeDelta::new(24 * 60 * 60, 0).ok_or(AnalysisError::Chrono)?;
+            iter_time += TimeDelta::new(24 * 60 * 60, 0).ok_or(err_from_type!(
+                ErrorType::Chrono,
+                "Creating next day's time"
+            ))?;
         }
 
         let mut total_time = Duration::from_secs(0);

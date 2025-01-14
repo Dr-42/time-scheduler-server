@@ -14,6 +14,7 @@ mod analysis;
 mod app;
 mod blocktype;
 mod currentblock;
+mod err;
 mod handlers;
 mod middleware;
 mod migrator;
