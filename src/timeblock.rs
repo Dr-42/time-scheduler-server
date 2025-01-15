@@ -27,6 +27,16 @@ pub struct SplitTimeBlockQuery {
     after_block_type_id: u8,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AdjustTimeBlockQuery {
+    start_time: DateTime<Local>,
+    end_time: DateTime<Local>,
+    new_start_time: DateTime<Local>,
+    new_end_time: DateTime<Local>,
+    title: String,
+    block_type_id: u8,
+}
+
 impl TimeBlock {
     pub fn new(
         start_time: DateTime<Local>,
@@ -205,6 +215,63 @@ impl TimeBlock {
         tokio::fs::write(file_name, content).await.map_err(|e| {
             err_with_context!(e, "Writing timeblocks/{}.json", day.format("%Y-%m-%d"))
         })?;
+        Ok(())
+    }
+
+    pub async fn adjust_timeblock(
+        adjust_time_block_query: AdjustTimeBlockQuery,
+    ) -> Result<(), Error> {
+        let day = adjust_time_block_query.start_time.date_naive();
+        let mut timeblocks = TimeBlock::get_day_timeblocks(day).await?;
+        let target_block = timeblocks
+            .iter()
+            .find(|b| {
+                b.start_time == adjust_time_block_query.start_time
+                    && b.end_time == adjust_time_block_query.end_time
+            })
+            .ok_or(err_from_type!(
+                ErrorType::NotFound,
+                "Time block not found from {} to {}",
+                adjust_time_block_query
+                    .start_time
+                    .format("%Y-%m-%d %H:%M:%S"),
+                adjust_time_block_query.end_time.format("%Y-%m-%d %H:%M:%S")
+            ))?;
+        let block_idx = timeblocks
+            .iter()
+            .position(|b| b == target_block)
+            .ok_or(err_from_type!(
+                ErrorType::InternalRustError,
+                "Time block not found from {} to {} after finding it",
+                adjust_time_block_query
+                    .start_time
+                    .format("%Y-%m-%d %H:%M:%S"),
+                adjust_time_block_query.end_time.format("%Y-%m-%d %H:%M:%S")
+            ))?;
+
+        if let Some(pre_block) = timeblocks.get_mut(block_idx - 1) {
+            pre_block.end_time = adjust_time_block_query.new_start_time;
+        }
+        if let Some(post_block) = timeblocks.get_mut(block_idx + 1) {
+            post_block.start_time = adjust_time_block_query.new_end_time;
+        }
+        let new_block = TimeBlock::new(
+            adjust_time_block_query.new_start_time,
+            adjust_time_block_query.new_end_time,
+            adjust_time_block_query.block_type_id,
+            adjust_time_block_query.title,
+        );
+        timeblocks.remove(block_idx);
+        timeblocks.insert(block_idx, new_block);
+
+        let file_name = format!("timeblocks/{}.json", day.format("%Y-%m-%d"));
+        let content = serde_json::to_string_pretty(&timeblocks).map_err(|e| {
+            err_with_context!(e, "Serializing timeblocks/{}.json", day.format("%Y-%m-%d"))
+        })?;
+        tokio::fs::write(file_name, &content).await.map_err(|e| {
+            err_with_context!(e, "Writing timeblocks/{}.json", day.format("%Y-%m-%d"))
+        })?;
+        println!("{}", content);
         Ok(())
     }
 }

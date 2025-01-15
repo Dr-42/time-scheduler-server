@@ -76,6 +76,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/timeblock/next", post(handlers::next_timeblock))
         // Split a given timeblock
         .route("/timeblock/split", post(handlers::split_timeblock))
+        // Adjust a given timeblock
+        .route("/timeblock/adjust", post(handlers::adjust_timeblock))
         // Posts a change to the current timeblock
         .route("/currentblock/change", post(handlers::change_current_block))
         // Get the current data
