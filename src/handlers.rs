@@ -14,7 +14,7 @@ use crate::{
     currentblock::CurrentBlock,
     err::{Error, ErrorType},
     err_from_type, err_with_context,
-    timeblock::TimeBlock,
+    timeblock::{AdjustTimeBlockQuery, SplitTimeBlockQuery, TimeBlock},
 };
 
 #[derive(Serialize, Deserialize)]
@@ -151,6 +151,28 @@ pub async fn next_timeblock(
         .status(StatusCode::OK)
         .body(Body::from("Time block saved"))
         .map_err(|e| err_with_context!(e, "Building response next timeblock"))
+}
+
+pub async fn split_timeblock(
+    Json(split_time_block_query): Json<SplitTimeBlockQuery>,
+) -> Result<impl IntoResponse, Error> {
+    println!("Splitting timeblock for {:?}", split_time_block_query);
+    TimeBlock::split_timeblock(split_time_block_query).await?;
+    Response::builder()
+        .status(StatusCode::OK)
+        .body(Body::from("Time block split"))
+        .map_err(|e| err_with_context!(e, "Building response split timeblock"))
+}
+
+pub async fn adjust_timeblock(
+    Json(adjust_time_block_query): Json<AdjustTimeBlockQuery>,
+) -> Result<impl IntoResponse, Error> {
+    println!("Adjusting timeblock for {:?}", adjust_time_block_query);
+    TimeBlock::adjust_timeblock(adjust_time_block_query).await?;
+    Response::builder()
+        .status(StatusCode::OK)
+        .body(Body::from("Time block adjusted"))
+        .map_err(|e| err_with_context!(e, "Building response adjust timeblock"))
 }
 
 pub async fn change_current_block(

@@ -8,12 +8,33 @@ use crate::{
     err_from_type, err_with_context,
 };
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TimeBlock {
     pub start_time: DateTime<Local>,
     pub end_time: DateTime<Local>,
     pub block_type_id: u8,
     pub title: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SplitTimeBlockQuery {
+    start_time: DateTime<Local>,
+    end_time: DateTime<Local>,
+    split_time: DateTime<Local>,
+    before_title: String,
+    after_title: String,
+    before_block_type_id: u8,
+    after_block_type_id: u8,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AdjustTimeBlockQuery {
+    start_time: DateTime<Local>,
+    end_time: DateTime<Local>,
+    new_start_time: DateTime<Local>,
+    new_end_time: DateTime<Local>,
+    title: String,
+    block_type_id: u8,
 }
 
 impl TimeBlock {
@@ -137,6 +158,117 @@ impl TimeBlock {
             err_with_context!(e, "Serializing timeblocks/{}.json", day.format("%Y-%m-%d"))
         })?;
         tokio::fs::write(file_name, contents).await.map_err(|e| {
+            err_with_context!(e, "Writing timeblocks/{}.json", day.format("%Y-%m-%d"))
+        })?;
+        Ok(())
+    }
+
+    pub async fn split_timeblock(split_time_block_query: SplitTimeBlockQuery) -> Result<(), Error> {
+        let day = split_time_block_query.start_time.date_naive();
+        let mut timeblocks = TimeBlock::get_day_timeblocks(day).await?;
+        let target_block = timeblocks
+            .iter()
+            .find(|b| {
+                b.start_time == split_time_block_query.start_time
+                    && b.end_time == split_time_block_query.end_time
+            })
+            .ok_or(err_from_type!(
+                ErrorType::NotFound,
+                "Time block not found from {} to {}",
+                split_time_block_query
+                    .start_time
+                    .format("%Y-%m-%d %H:%M:%S"),
+                split_time_block_query.end_time.format("%Y-%m-%d %H:%M:%S")
+            ))?;
+        let block_idx = timeblocks
+            .iter()
+            .position(|b| b == target_block)
+            .ok_or(err_from_type!(
+                ErrorType::InternalRustError,
+                "Time block not found from {} to {} after finding it",
+                split_time_block_query
+                    .start_time
+                    .format("%Y-%m-%d %H:%M:%S"),
+                split_time_block_query.end_time.format("%Y-%m-%d %H:%M:%S")
+            ))?;
+        let before_block = TimeBlock::new(
+            split_time_block_query.start_time,
+            split_time_block_query.split_time,
+            split_time_block_query.before_block_type_id,
+            split_time_block_query.before_title,
+        );
+        let after_block = TimeBlock::new(
+            split_time_block_query.split_time,
+            split_time_block_query.end_time,
+            split_time_block_query.after_block_type_id,
+            split_time_block_query.after_title,
+        );
+
+        timeblocks.remove(block_idx);
+        timeblocks.insert(block_idx, before_block);
+        timeblocks.insert(block_idx + 1, after_block);
+
+        let file_name = format!("timeblocks/{}.json", day.format("%Y-%m-%d"));
+        let content = serde_json::to_string_pretty(&timeblocks).map_err(|e| {
+            err_with_context!(e, "Serializing timeblocks/{}.json", day.format("%Y-%m-%d"))
+        })?;
+        tokio::fs::write(file_name, content).await.map_err(|e| {
+            err_with_context!(e, "Writing timeblocks/{}.json", day.format("%Y-%m-%d"))
+        })?;
+        Ok(())
+    }
+
+    pub async fn adjust_timeblock(
+        adjust_time_block_query: AdjustTimeBlockQuery,
+    ) -> Result<(), Error> {
+        let day = adjust_time_block_query.start_time.date_naive();
+        let mut timeblocks = TimeBlock::get_day_timeblocks(day).await?;
+        let target_block = timeblocks
+            .iter()
+            .find(|b| {
+                b.start_time == adjust_time_block_query.start_time
+                    && b.end_time == adjust_time_block_query.end_time
+            })
+            .ok_or(err_from_type!(
+                ErrorType::NotFound,
+                "Time block not found from {} to {}",
+                adjust_time_block_query
+                    .start_time
+                    .format("%Y-%m-%d %H:%M:%S"),
+                adjust_time_block_query.end_time.format("%Y-%m-%d %H:%M:%S")
+            ))?;
+        let block_idx = timeblocks
+            .iter()
+            .position(|b| b == target_block)
+            .ok_or(err_from_type!(
+                ErrorType::InternalRustError,
+                "Time block not found from {} to {} after finding it",
+                adjust_time_block_query
+                    .start_time
+                    .format("%Y-%m-%d %H:%M:%S"),
+                adjust_time_block_query.end_time.format("%Y-%m-%d %H:%M:%S")
+            ))?;
+
+        if let Some(pre_block) = timeblocks.get_mut(block_idx - 1) {
+            pre_block.end_time = adjust_time_block_query.new_start_time;
+        }
+        if let Some(post_block) = timeblocks.get_mut(block_idx + 1) {
+            post_block.start_time = adjust_time_block_query.new_end_time;
+        }
+        let new_block = TimeBlock::new(
+            adjust_time_block_query.new_start_time,
+            adjust_time_block_query.new_end_time,
+            adjust_time_block_query.block_type_id,
+            adjust_time_block_query.title,
+        );
+        timeblocks.remove(block_idx);
+        timeblocks.insert(block_idx, new_block);
+
+        let file_name = format!("timeblocks/{}.json", day.format("%Y-%m-%d"));
+        let content = serde_json::to_string_pretty(&timeblocks).map_err(|e| {
+            err_with_context!(e, "Serializing timeblocks/{}.json", day.format("%Y-%m-%d"))
+        })?;
+        tokio::fs::write(file_name, &content).await.map_err(|e| {
             err_with_context!(e, "Writing timeblocks/{}.json", day.format("%Y-%m-%d"))
         })?;
         Ok(())

@@ -50,6 +50,7 @@ pub enum ErrorType {
     Tokio(tokio::io::Error),
     Chrono,
     IdenticalBlockType,
+    NotFound,
     InternalRustError,
     Unauthorized,
 }
@@ -62,6 +63,7 @@ impl Display for ErrorType {
             ErrorType::Tokio(error) => write!(f, "Tokio error: {}", error),
             ErrorType::Chrono => write!(f, "Chrono error"),
             ErrorType::IdenticalBlockType => write!(f, "Blocktypes Identical"),
+            ErrorType::NotFound => write!(f, "Timeblock Not Found"),
             ErrorType::InternalRustError => write!(f, "Internal Rust error"),
             ErrorType::Unauthorized => write!(f, "Unauthorized Access"),
         }
