@@ -271,7 +271,6 @@ impl TimeBlock {
         tokio::fs::write(file_name, &content).await.map_err(|e| {
             err_with_context!(e, "Writing timeblocks/{}.json", day.format("%Y-%m-%d"))
         })?;
-        println!("{}", content);
         Ok(())
     }
 }

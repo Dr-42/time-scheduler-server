@@ -63,29 +63,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Password hash: {}", password_hash);
 
     let state = AppState::init(password_hash).await;
+
+    // Blocktype-related routes
+    let blocktype_routes = Router::new()
+        .route("/get", get(handlers::get_blocktypes))
+        .route("/new", post(handlers::new_blocktype));
+
+    // Timeblock-related routes
+    let timeblock_routes = Router::new()
+        .route("/get", get(handlers::get_daydata))
+        .route("/next", post(handlers::next_timeblock))
+        .route("/split", post(handlers::split_timeblock))
+        .route("/adjust", post(handlers::adjust_timeblock));
+
+    // Current block-related routes
+    let currentblock_routes = Router::new()
+        .route("/change", post(handlers::change_current_block))
+        .route("/get", get(handlers::get_current_block));
+
+    // Main application routes
     let routes = Router::new()
-        // Sends all the data for today. Will be most used
-        .route("/state", get(handlers::get_entire_state))
-        // Gets the blocktypes
-        .route("/blocktype/get", get(handlers::get_blocktypes))
-        // New Blocktype
-        .route("/blocktype/new", post(handlers::new_blocktype))
-        // Gets the timeblocks for a specified date
-        .route("/timeblock/get", get(handlers::get_daydata))
-        // Posts a new timeblock, ie user starts a new task
-        .route("/timeblock/next", post(handlers::next_timeblock))
-        // Split a given timeblock
-        .route("/timeblock/split", post(handlers::split_timeblock))
-        // Adjust a given timeblock
-        .route("/timeblock/adjust", post(handlers::adjust_timeblock))
-        // Posts a change to the current timeblock
-        .route("/currentblock/change", post(handlers::change_current_block))
-        // Get the current data
-        .route("/currentblock/get", get(handlers::get_current_block))
-        // Get analysis for a given date range
-        .route("/analysis", get(handlers::get_analysis))
-        // Check authorization
+        .route("/state", get(handlers::get_entire_state)) // Main state route
+        .nest("/blocktype", blocktype_routes) // Grouped blocktype routes
+        .nest("/timeblock", timeblock_routes) // Grouped timeblock routes
+        .nest("/currentblock", currentblock_routes) // Grouped current block routes
+        .route("/analysis", get(handlers::get_analysis)) // Analysis route
         .layer(from_fn_with_state(state, middleware::auth_middleware));
+
     let router_service = routes.into_make_service();
     let listener = TcpListener::bind(&ip).await?;
     serve(listener, router_service).await?;
