@@ -74,6 +74,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/timeblock/get", get(handlers::get_daydata))
         // Posts a new timeblock, ie user starts a new task
         .route("/timeblock/next", post(handlers::next_timeblock))
+        // Split a given timeblock
+        .route("/timeblock/split", post(handlers::split_timeblock))
         // Posts a change to the current timeblock
         .route("/currentblock/change", post(handlers::change_current_block))
         // Get the current data

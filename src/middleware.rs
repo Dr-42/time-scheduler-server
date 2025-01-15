@@ -6,7 +6,11 @@ use axum::{
     response::IntoResponse,
 };
 
-use crate::{app::AppState, err::Error, err_with_context};
+use crate::{
+    app::AppState,
+    err::{Error, ErrorType},
+    err_from_type, err_with_context,
+};
 
 pub async fn auth_middleware(
     State(app_state): State<AppState>,
@@ -26,6 +30,8 @@ pub async fn auth_middleware(
     println!("Unauthorized request");
     Response::builder()
         .status(StatusCode::UNAUTHORIZED)
-        .body(Body::from("Unauthorized"))
+        .body(Body::from(
+            err_from_type!(ErrorType::Unauthorized, "Unauthorized request").to_string(),
+        ))
         .map_err(|e| err_with_context!(e, "Building for unauthorized request"))
 }
