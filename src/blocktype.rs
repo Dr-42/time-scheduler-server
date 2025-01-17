@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::{
     err::{Error, ErrorType},
     err_with_context,
@@ -41,7 +43,7 @@ impl PushNew<NewBlockType> for Vec<BlockType> {
 }
 
 impl BlockType {
-    pub async fn save(types: &[Self]) -> Result<(), Error> {
+    pub async fn save(data_dir: &Path, types: &[Self]) -> Result<(), Error> {
         if Self::check_identical(types) {
             return Err(Error {
                 error_type: ErrorType::IdenticalBlockType,
@@ -51,29 +53,31 @@ impl BlockType {
                 additional: None,
             });
         }
+        let blocktypes_path = data_dir.join("blocktypes.json");
         let contents = serde_json::to_string_pretty(&types)
-            .map_err(|e| err_with_context!(e, "Serializing to blocktypes.json"))?;
-        tokio::fs::write("blocktypes.json", contents)
+            .map_err(|e| err_with_context!(e, "Serializing to {}", blocktypes_path.display()))?;
+        tokio::fs::write(&blocktypes_path, contents)
             .await
             .map_err(|e| err_with_context!(e, "Writing to blocktypes.json"))?;
         Ok(())
     }
 
-    pub async fn load() -> Result<Vec<Self>, Error> {
-        if !std::path::Path::new("blocktypes.json").exists() {
+    pub async fn load(data_dir: &Path) -> Result<Vec<Self>, Error> {
+        let blocktypes_path = data_dir.join("blocktypes.json");
+        if !blocktypes_path.exists() {
             let blocktypes = vec![BlockType {
                 id: 0,
                 name: "System".to_string(),
                 color: Color { r: 0, g: 0, b: 255 },
             }];
-            BlockType::save(&blocktypes).await?;
+            BlockType::save(data_dir, &blocktypes).await?;
             return Ok(blocktypes);
         }
-        let content = tokio::fs::read_to_string("blocktypes.json")
+        let content = tokio::fs::read_to_string(&blocktypes_path)
             .await
-            .map_err(|e| err_with_context!(e, "Reading blocktypes.json"))?;
+            .map_err(|e| err_with_context!(e, "Reading {}", blocktypes_path.display()))?;
         let blocktypes = serde_json::from_str::<Vec<Self>>(&content)
-            .map_err(|e| err_with_context!(e, "Deserializing blocktypes.json"))?;
+            .map_err(|e| err_with_context!(e, "Deserializing {}", blocktypes_path.display()))?;
         Ok(blocktypes)
     }
 

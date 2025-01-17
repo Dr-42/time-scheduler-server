@@ -56,50 +56,45 @@ impl TimeBlock {
         self.end_time - self.start_time
     }
 
-    pub async fn get_day_timeblocks(day: NaiveDate) -> Result<Vec<TimeBlock>, Error> {
-        if !Path::new("timeblocks").exists() {
-            tokio::fs::create_dir("timeblocks")
+    pub async fn get_day_timeblocks(
+        data_dir: &Path,
+        day: NaiveDate,
+    ) -> Result<Vec<TimeBlock>, Error> {
+        let time_blocks_dir = data_dir.join("timeblocks");
+        if !time_blocks_dir.exists() {
+            tokio::fs::create_dir(&time_blocks_dir)
                 .await
                 .map_err(|e| err_with_context!(e, "Creating timeblocks directory"))?;
         }
 
-        let file_name = format!("timeblocks/{}.json", day.format("%Y-%m-%d"));
-        let file = tokio::fs::File::open(file_name).await;
+        let file_name = time_blocks_dir.join(format!("{}.json", day.format("%Y-%m-%d")));
+        let file = tokio::fs::File::open(&file_name).await;
         if let Err(e) = &file {
             if e.kind() == std::io::ErrorKind::NotFound {
                 return Ok(vec![]);
             }
         }
-        let mut file = file.map_err(|e| {
-            err_with_context!(e, "Opening timeblocks/{}.json", day.format("%Y-%m-%d"))
-        })?;
+        let mut file = file.map_err(|e| err_with_context!(e, "Opening {}", file_name.display()))?;
         let mut content = String::new();
         tokio::io::AsyncReadExt::read_to_string(&mut file, &mut content)
             .await
-            .map_err(|e| {
-                err_with_context!(e, "Reading timeblocks/{}.json", day.format("%Y-%m-%d"))
-            })?;
+            .map_err(|e| err_with_context!(e, "Reading {}", file_name.display()))?;
         if content.is_empty() {
             return Ok(vec![]);
         }
-        let timeblocks: Vec<TimeBlock> = serde_json::from_str(&content).map_err(|e| {
-            err_with_context!(
-                e,
-                "Deserializing timeblocks/{}.json",
-                day.format("%Y-%m-%d")
-            )
-        })?;
+        let timeblocks: Vec<TimeBlock> = serde_json::from_str(&content)
+            .map_err(|e| err_with_context!(e, "Deserializing {}", file_name.display()))?;
         Ok(timeblocks)
     }
 
-    pub async fn save(&self) -> Result<(), Error> {
+    pub async fn save(&self, data_dir: &Path) -> Result<(), Error> {
         // Save to the end time day file.
         // If the day changed, find previous day records. If they exist, split the block in two and save them.
         let day = self.end_time.date_naive();
         let start_day = self.start_time.date_naive();
         let mut self_clone = self.clone();
         if day != start_day {
-            let mut timeblocks = TimeBlock::get_day_timeblocks(start_day)
+            let mut timeblocks = TimeBlock::get_day_timeblocks(data_dir, start_day)
                 .await
                 .unwrap_or_default();
             // End at 11:59:59 of the start day
@@ -122,14 +117,12 @@ impl TimeBlock {
                 self.block_type_id,
                 self.title.clone(),
             ));
-            let file_name = format!("timeblocks/{}.json", start_day.format("%Y-%m-%d"));
-            let content = serde_json::to_string_pretty(&timeblocks).map_err(|e| {
-                err_with_context!(
-                    e,
-                    "Serializing timeblocks/{}.json",
-                    start_day.format("%Y-%m-%d")
-                )
-            })?;
+            //let file_name = format!("timeblocks/{}.json", start_day.format("%Y-%m-%d"));
+            let file_name = data_dir
+                .join("timeblocks")
+                .join(format!("{}.json", start_day.format("%Y-%m-%d")));
+            let content = serde_json::to_string_pretty(&timeblocks)
+                .map_err(|e| err_with_context!(e, "Serializing {}", file_name.display()))?;
             tokio::fs::write(file_name, content).await.map_err(|e| {
                 err_with_context!(
                     e,
@@ -151,21 +144,27 @@ impl TimeBlock {
                     day.format("%Y-%m-%d")
                 ))?;
         }
-        let mut timeblocks = TimeBlock::get_day_timeblocks(day).await.unwrap_or_default();
+        let mut timeblocks = TimeBlock::get_day_timeblocks(data_dir, day)
+            .await
+            .unwrap_or_default();
         timeblocks.push(self_clone);
-        let file_name = format!("timeblocks/{}.json", day.format("%Y-%m-%d"));
-        let contents = serde_json::to_string_pretty(&timeblocks).map_err(|e| {
-            err_with_context!(e, "Serializing timeblocks/{}.json", day.format("%Y-%m-%d"))
-        })?;
-        tokio::fs::write(file_name, contents).await.map_err(|e| {
-            err_with_context!(e, "Writing timeblocks/{}.json", day.format("%Y-%m-%d"))
-        })?;
+        let file_name = data_dir
+            .join("timeblocks")
+            .join(format!("{}.json", day.format("%Y-%m-%d")));
+        let contents = serde_json::to_string_pretty(&timeblocks)
+            .map_err(|e| err_with_context!(e, "Serializing {}", file_name.display()))?;
+        tokio::fs::write(&file_name, contents)
+            .await
+            .map_err(|e| err_with_context!(e, "Writing timeblocks {}", file_name.display()))?;
         Ok(())
     }
 
-    pub async fn split_timeblock(split_time_block_query: SplitTimeBlockQuery) -> Result<(), Error> {
+    pub async fn split_timeblock(
+        data_dir: &Path,
+        split_time_block_query: SplitTimeBlockQuery,
+    ) -> Result<(), Error> {
         let day = split_time_block_query.start_time.date_naive();
-        let mut timeblocks = TimeBlock::get_day_timeblocks(day).await?;
+        let mut timeblocks = TimeBlock::get_day_timeblocks(data_dir, day).await?;
         let target_block = timeblocks
             .iter()
             .find(|b| {
@@ -208,21 +207,23 @@ impl TimeBlock {
         timeblocks.insert(block_idx, before_block);
         timeblocks.insert(block_idx + 1, after_block);
 
-        let file_name = format!("timeblocks/{}.json", day.format("%Y-%m-%d"));
-        let content = serde_json::to_string_pretty(&timeblocks).map_err(|e| {
-            err_with_context!(e, "Serializing timeblocks/{}.json", day.format("%Y-%m-%d"))
-        })?;
-        tokio::fs::write(file_name, content).await.map_err(|e| {
-            err_with_context!(e, "Writing timeblocks/{}.json", day.format("%Y-%m-%d"))
-        })?;
+        let file_name = data_dir
+            .join("timeblocks")
+            .join(format!("{}.json", day.format("%Y-%m-%d")));
+        let content = serde_json::to_string_pretty(&timeblocks)
+            .map_err(|e| err_with_context!(e, "Serializing {}", file_name.display()))?;
+        tokio::fs::write(&file_name, content)
+            .await
+            .map_err(|e| err_with_context!(e, "Writing {}", file_name.display()))?;
         Ok(())
     }
 
     pub async fn adjust_timeblock(
+        data_dir: &Path,
         adjust_time_block_query: AdjustTimeBlockQuery,
     ) -> Result<(), Error> {
         let day = adjust_time_block_query.start_time.date_naive();
-        let mut timeblocks = TimeBlock::get_day_timeblocks(day).await?;
+        let mut timeblocks = TimeBlock::get_day_timeblocks(data_dir, day).await?;
         let target_block = timeblocks
             .iter()
             .find(|b| {
@@ -264,13 +265,14 @@ impl TimeBlock {
         timeblocks.remove(block_idx);
         timeblocks.insert(block_idx, new_block);
 
-        let file_name = format!("timeblocks/{}.json", day.format("%Y-%m-%d"));
-        let content = serde_json::to_string_pretty(&timeblocks).map_err(|e| {
-            err_with_context!(e, "Serializing timeblocks/{}.json", day.format("%Y-%m-%d"))
-        })?;
-        tokio::fs::write(file_name, &content).await.map_err(|e| {
-            err_with_context!(e, "Writing timeblocks/{}.json", day.format("%Y-%m-%d"))
-        })?;
+        let file_name = data_dir
+            .join("timeblocks")
+            .join(format!("{}.json", day.format("%Y-%m-%d")));
+        let content = serde_json::to_string_pretty(&timeblocks)
+            .map_err(|e| err_with_context!(e, "Serializing {}", file_name.display()))?;
+        tokio::fs::write(&file_name, &content)
+            .await
+            .map_err(|e| err_with_context!(e, "Writing {}", file_name.display()))?;
         Ok(())
     }
 }

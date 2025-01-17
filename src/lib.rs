@@ -1,13 +1,12 @@
 #![deny(clippy::unwrap_used, clippy::expect_used)]
 
-use app::AppState;
+use app::{AppData, AppState};
 use axum::{
     middleware::from_fn_with_state,
     routing::{get, post},
     serve, Router,
 };
-use sha256::digest;
-use std::{env, path::Path};
+use std::path::PathBuf;
 use tokio::net::TcpListener;
 
 mod analysis;
@@ -17,51 +16,16 @@ mod currentblock;
 mod err;
 mod handlers;
 mod middleware;
-mod migrator;
 mod timeblock;
 
-macro_rules! password_input {
-    ($($fmt:expr),*) => {
-        {
-            use std::io::{self, Write};
-            print!($($fmt),*);
-            io::stdout().flush().unwrap();
-            let input = rpassword::read_password()?;
-            input
-        }
-    };
-}
-
-pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let args = env::args().collect::<Vec<String>>();
-    let mut port = 8080;
-    if let Some(subcmd) = args.get(1) {
-        if subcmd == "--help" {
-            println!("Usage: {} <port>", args[0]);
-            return Ok(());
-        } else if subcmd == "migrate" {
-            let overwrite = args.get(2).map(|s| s == "--overwrite").unwrap_or(false);
-            migrator::migrate(overwrite).await;
-            return Ok(());
-        }
-    }
-    if args.len() == 2 {
-        port = args[1].parse::<u16>()?;
-    } else {
-        println!("Usage: {} <port>", args[0]);
-    }
-
+pub async fn run(
+    port: u16,
+    password_hash: String,
+    data_dir: PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
     let ip = format!("0.0.0.0:{}", port);
-
-    if !Path::new("password.txt").exists() {
-        let password = password_input!("Enter a password: ");
-        let hash = digest(password);
-        std::fs::write("password.txt", hash)?;
-    }
-    let password_hash = std::fs::read_to_string("password.txt")?;
-    println!("Password hash: {}", password_hash);
-
     let state = AppState::init(password_hash).await;
+    let data = AppData::init(data_dir).await;
 
     // Blocktype-related routes
     let blocktype_routes = Router::new()
@@ -87,6 +51,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .nest("/timeblock", timeblock_routes) // Grouped timeblock routes
         .nest("/currentblock", currentblock_routes) // Grouped current block routes
         .route("/analysis", get(handlers::get_analysis)) // Analysis route
+        .with_state(data)
         .layer(from_fn_with_state(state, middleware::auth_middleware));
 
     let router_service = routes.into_make_service();

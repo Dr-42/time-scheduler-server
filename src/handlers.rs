@@ -1,6 +1,6 @@
 use axum::{
     body::Body,
-    extract::Query,
+    extract::{Query, State},
     http::{Response, StatusCode},
     response::IntoResponse,
     Json,
@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     analysis::{Analysis, AnalysisQuery},
+    app::AppData,
     blocktype::{BlockType, NewBlockType, PushNew},
     currentblock::CurrentBlock,
     err::{Error, ErrorType},
@@ -24,11 +25,11 @@ pub struct EntireState {
     currentblock: CurrentBlock,
 }
 
-pub async fn get_entire_state() -> Result<impl IntoResponse, Error> {
+pub async fn get_entire_state(State(data): State<AppData>) -> Result<impl IntoResponse, Error> {
     println!("Getting home state for today");
-    let blocktypes = BlockType::load().await?;
-    let daydata = TimeBlock::get_day_timeblocks(Local::now().date_naive()).await?;
-    let currentblock = CurrentBlock::get().await?;
+    let blocktypes = BlockType::load(&data.data_dir).await?;
+    let daydata = TimeBlock::get_day_timeblocks(&data.data_dir, Local::now().date_naive()).await?;
+    let currentblock = CurrentBlock::get(&data.data_dir).await?;
     let entire_state = EntireState {
         blocktypes,
         daydata,
@@ -44,9 +45,9 @@ pub async fn get_entire_state() -> Result<impl IntoResponse, Error> {
         .map_err(|e| err_with_context!(e, "Building response for entire state"))
 }
 
-pub async fn get_blocktypes() -> Result<impl IntoResponse, Error> {
+pub async fn get_blocktypes(State(data): State<AppData>) -> Result<impl IntoResponse, Error> {
     println!("Getting block types");
-    let blocktypes = BlockType::load().await?;
+    let blocktypes = BlockType::load(&data.data_dir).await?;
     let response_body = serde_json::to_string(&blocktypes)
         .map_err(|e| err_with_context!(e, "Serializing block types"))?;
     Response::builder()
@@ -57,13 +58,14 @@ pub async fn get_blocktypes() -> Result<impl IntoResponse, Error> {
 }
 
 pub async fn new_blocktype(
+    State(data): State<AppData>,
     Json(blocktype): Json<NewBlockType>,
 ) -> Result<impl IntoResponse, Error> {
-    match BlockType::load().await {
+    match BlockType::load(&data.data_dir).await {
         Ok(mut current_blocks) => {
             println!("Saving new block type {:?}", &blocktype);
             current_blocks.push_new(blocktype);
-            BlockType::save(&current_blocks).await?;
+            BlockType::save(&data.data_dir, &current_blocks).await?;
             Ok(Response::builder()
                 .status(StatusCode::OK)
                 .body(Body::from("Block type saved"))
@@ -81,9 +83,12 @@ pub struct DayDataQuery {
     date: DateTime<Local>,
 }
 
-pub async fn get_daydata(Query(day): Query<DayDataQuery>) -> Result<impl IntoResponse, Error> {
+pub async fn get_daydata(
+    State(data): State<AppData>,
+    Query(day): Query<DayDataQuery>,
+) -> Result<impl IntoResponse, Error> {
     println!("Getting day data for {:?}", day.date);
-    let timeblocks = TimeBlock::get_day_timeblocks(day.date.date_naive()).await?;
+    let timeblocks = TimeBlock::get_day_timeblocks(&data.data_dir, day.date.date_naive()).await?;
     let response_body = serde_json::to_string(&timeblocks).map_err(|e| {
         err_with_context!(
             e,
@@ -105,13 +110,19 @@ pub async fn get_daydata(Query(day): Query<DayDataQuery>) -> Result<impl IntoRes
 }
 
 pub async fn next_timeblock(
+    State(data): State<AppData>,
     Json(new_current_block): Json<CurrentBlock>,
 ) -> Result<impl IntoResponse, Error> {
-    let time_blocks = TimeBlock::get_day_timeblocks(Local::now().date_naive()).await?;
-    let current_data = CurrentBlock::get().await?;
+    let time_blocks =
+        TimeBlock::get_day_timeblocks(&data.data_dir, Local::now().date_naive()).await?;
+    let current_data = CurrentBlock::get(&data.data_dir).await?;
     let time_blocks = if time_blocks.is_empty() {
         // Get previous day
-        TimeBlock::get_day_timeblocks(Local::now().date_naive() - chrono::Duration::days(1)).await?
+        TimeBlock::get_day_timeblocks(
+            &data.data_dir,
+            Local::now().date_naive() - chrono::Duration::days(1),
+        )
+        .await?
     } else {
         time_blocks
     };
@@ -144,8 +155,8 @@ pub async fn next_timeblock(
         current_data.block_type_id,
         current_data.current_block_name,
     );
-    timeblock.save().await?;
-    new_current_block.save().await?;
+    timeblock.save(&data.data_dir).await?;
+    new_current_block.save(&data.data_dir).await?;
 
     Response::builder()
         .status(StatusCode::OK)
@@ -154,10 +165,11 @@ pub async fn next_timeblock(
 }
 
 pub async fn split_timeblock(
+    State(data): State<AppData>,
     Json(split_time_block_query): Json<SplitTimeBlockQuery>,
 ) -> Result<impl IntoResponse, Error> {
     println!("Splitting timeblock for {:?}", split_time_block_query);
-    TimeBlock::split_timeblock(split_time_block_query).await?;
+    TimeBlock::split_timeblock(&data.data_dir, split_time_block_query).await?;
     Response::builder()
         .status(StatusCode::OK)
         .body(Body::from("Time block split"))
@@ -165,10 +177,11 @@ pub async fn split_timeblock(
 }
 
 pub async fn adjust_timeblock(
+    State(data): State<AppData>,
     Json(adjust_time_block_query): Json<AdjustTimeBlockQuery>,
 ) -> Result<impl IntoResponse, Error> {
     println!("Adjusting timeblock for {:?}", adjust_time_block_query);
-    TimeBlock::adjust_timeblock(adjust_time_block_query).await?;
+    TimeBlock::adjust_timeblock(&data.data_dir, adjust_time_block_query).await?;
     Response::builder()
         .status(StatusCode::OK)
         .body(Body::from("Time block adjusted"))
@@ -176,19 +189,20 @@ pub async fn adjust_timeblock(
 }
 
 pub async fn change_current_block(
+    State(data): State<AppData>,
     Json(current_block): Json<CurrentBlock>,
 ) -> Result<impl IntoResponse, Error> {
     println!("Changing current block to {:?}", current_block);
-    current_block.save().await?;
+    current_block.save(&data.data_dir).await?;
     Response::builder()
         .status(StatusCode::OK)
         .body(Body::from("Current block saved"))
         .map_err(|e| err_with_context!(e, "Building response change current block"))
 }
 
-pub async fn get_current_block() -> Result<impl IntoResponse, Error> {
+pub async fn get_current_block(State(data): State<AppData>) -> Result<impl IntoResponse, Error> {
     println!("Getting current data");
-    let current_block = CurrentBlock::get().await?;
+    let current_block = CurrentBlock::get(&data.data_dir).await?;
     let response_body = serde_json::to_string(&current_block)
         .map_err(|e| err_with_context!(e, "Serializing current block"))?;
     Response::builder()
@@ -198,12 +212,15 @@ pub async fn get_current_block() -> Result<impl IntoResponse, Error> {
         .map_err(|e| err_with_context!(e, "Building response for current block"))
 }
 
-pub async fn get_analysis(Query(query): Query<AnalysisQuery>) -> Result<impl IntoResponse, Error> {
+pub async fn get_analysis(
+    State(data): State<AppData>,
+    Query(query): Query<AnalysisQuery>,
+) -> Result<impl IntoResponse, Error> {
     println!(
         "Getting analysis data from {:?} to {:?}",
         query.start, query.end
     );
-    let analysis = Analysis::get_analysis_data(query.start, query.end).await?;
+    let analysis = Analysis::get_analysis_data(&data.data_dir, query.start, query.end).await?;
     let response_body = serde_json::to_string(&analysis)
         .map_err(|e| err_with_context!(e, "Serializing analysis data"))?;
     Response::builder()

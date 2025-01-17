@@ -1,6 +1,6 @@
 use chrono::{DateTime, Local, NaiveDate, TimeDelta};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, path::Path, time::Duration};
 
 use crate::{
     blocktype::BlockType,
@@ -31,12 +31,13 @@ pub struct Analysis {
 
 impl Analysis {
     pub async fn get_analysis_data(
+        data_dir: &Path,
         start_time: DateTime<Local>,
         end_time: DateTime<Local>,
     ) -> Result<Analysis, Error> {
         let start_time = start_time.date_naive();
         let end_time = end_time.date_naive();
-        let mut blocktypes = BlockType::load().await?;
+        let mut blocktypes = BlockType::load(data_dir).await?;
         blocktypes.sort_by(|a, b| a.id.cmp(&b.id));
 
         let mut iter_time = start_time;
@@ -44,7 +45,7 @@ impl Analysis {
         let mut trends: Vec<Trend> = Vec::new();
 
         while iter_time <= end_time {
-            let blocks = TimeBlock::get_day_timeblocks(iter_time).await?;
+            let blocks = TimeBlock::get_day_timeblocks(data_dir, iter_time).await?;
             for blocktype in &blocktypes {
                 let mut time_spent = Duration::from_secs(0);
                 for block in &blocks {
