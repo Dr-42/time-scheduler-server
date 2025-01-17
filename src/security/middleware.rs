@@ -7,13 +7,14 @@ use axum::{
 };
 
 use crate::{
-    app::AppState,
+    app::AppData,
     err::{Error, ErrorType},
     err_from_type, err_with_context,
+    security::implementation::verify_token,
 };
 
 pub async fn auth_middleware(
-    State(app_state): State<AppState>,
+    State(app_state): State<AppData>,
     req: axum::http::Request<Body>,
     next: Next,
 ) -> Result<impl IntoResponse, impl IntoResponse> {
@@ -21,7 +22,7 @@ pub async fn auth_middleware(
     if let Some(auth_header) = headers.get(axum::http::header::AUTHORIZATION) {
         if let Ok(auth_str) = auth_header.to_str() {
             if let Some(bearer_token) = auth_str.strip_prefix("Bearer ") {
-                if bearer_token == app_state.password_hash.as_str() {
+                if verify_token(&app_state.data_dir, bearer_token).await? {
                     return Ok(next.run(req).await);
                 }
             }

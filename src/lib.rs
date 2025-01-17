@@ -15,7 +15,7 @@ mod blocktype;
 mod currentblock;
 mod err;
 mod handlers;
-mod middleware;
+mod security;
 mod timeblock;
 
 pub async fn run(
@@ -26,6 +26,8 @@ pub async fn run(
     let ip = format!("0.0.0.0:{}", port);
     let state = AppState::init(password_hash).await;
     let data = AppData::init(data_dir).await;
+
+    // NOTE: Main blocks. The basic api
 
     // Blocktype-related routes
     let blocktype_routes = Router::new()
@@ -44,6 +46,14 @@ pub async fn run(
         .route("/change", post(handlers::change_current_block))
         .route("/get", get(handlers::get_current_block));
 
+    // NOTE: User management routes
+    let security_routes = Router::new()
+        .route("/handshake", get(security::handlers::handshake))
+        .route("/new", post(security::handlers::new_device))
+        .route("/login", post(security::handlers::device_login));
+
+    let security_route = Router::new().nest("/user", security_routes);
+
     // Main application routes
     let routes = Router::new()
         .route("/state", get(handlers::get_entire_state)) // Main state route
@@ -51,8 +61,12 @@ pub async fn run(
         .nest("/timeblock", timeblock_routes) // Grouped timeblock routes
         .nest("/currentblock", currentblock_routes) // Grouped current block routes
         .route("/analysis", get(handlers::get_analysis)) // Analysis route
-        .with_state(data)
-        .layer(from_fn_with_state(state, middleware::auth_middleware));
+        .layer(from_fn_with_state(
+            data.clone(),
+            security::middleware::auth_middleware,
+        ))
+        .nest("/security", security_route)
+        .with_state(data);
 
     let router_service = routes.into_make_service();
     let listener = TcpListener::bind(&ip).await?;
