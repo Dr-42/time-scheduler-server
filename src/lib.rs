@@ -4,7 +4,7 @@ use app::{AppData, AppState};
 use axum::{
     middleware::from_fn_with_state,
     routing::{get, post},
-    serve, Router,
+    Extension, Router,
 };
 use std::path::PathBuf;
 use tokio::net::TcpListener;
@@ -27,49 +27,33 @@ pub async fn run(
     let state = AppState::init(password_hash).await;
     let data = AppData::init(data_dir).await;
 
-    // NOTE: Main blocks. The basic api
-
-    // Blocktype-related routes
-    let blocktype_routes = Router::new()
-        .route("/get", get(handlers::get_blocktypes))
-        .route("/new", post(handlers::new_blocktype));
-
-    // Timeblock-related routes
-    let timeblock_routes = Router::new()
-        .route("/get", get(handlers::get_daydata))
-        .route("/next", post(handlers::next_timeblock))
-        .route("/split", post(handlers::split_timeblock))
-        .route("/adjust", post(handlers::adjust_timeblock));
-
-    // Current block-related routes
-    let currentblock_routes = Router::new()
-        .route("/change", post(handlers::change_current_block))
-        .route("/get", get(handlers::get_current_block));
-
-    // NOTE: User management routes
-    let auth_routes = Router::new()
-        .route("/handshake", get(auth::handlers::handshake))
-        .route("/device", post(auth::handlers::register))
-        .route("/info", post(auth::handlers::get_access_token));
-
-    let security_route = Router::new().nest("/user", auth_routes);
-
-    // Main application routes
     let routes = Router::new()
-        .route("/state", get(handlers::get_entire_state)) // Main state route
-        .nest("/blocktype", blocktype_routes) // Grouped blocktype routes
-        .nest("/timeblock", timeblock_routes) // Grouped timeblock routes
-        .nest("/currentblock", currentblock_routes) // Grouped current block routes
-        .route("/analysis", get(handlers::get_analysis)) // Analysis route
+        // Auth
+        .route("/auth/login", post(auth::handlers::login))
+        .route("/auth/refresh", post(auth::handlers::refresh_token))
+        .layer(Extension(state.clone()))
+        // Main home state for today
+        .route("/state", get(handlers::get_entire_state))
+        // Block types
+        .route("/blocktype/get", get(handlers::get_blocktypes))
+        .route("/blocktype/new", post(handlers::new_blocktype))
+        // Time blocks
+        .route("/timeblock/get", get(handlers::get_daydata))
+        .route("/timeblock/next", post(handlers::next_timeblock))
+        .route("/timeblock/split", post(handlers::split_timeblock))
+        .route("/timeblock/adjust", post(handlers::adjust_timeblock))
+        // Current block
+        .route("/currentblock/get", get(handlers::get_current_block))
+        .route("/currentblock/change", post(handlers::change_current_block))
+        // Analysis
+        .route("/analysis", get(handlers::get_analysis))
         .layer(from_fn_with_state(
-            data.clone(),
+            state.clone(),
             auth::middleware::auth_middleware,
         ))
-        .nest("/security", security_route)
         .with_state(data);
 
-    let router_service = routes.into_make_service();
     let listener = TcpListener::bind(&ip).await?;
-    serve(listener, router_service).await?;
+    axum::serve(listener, routes).await?;
     Ok(())
 }

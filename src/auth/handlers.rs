@@ -1,101 +1,129 @@
-use axum::{
-    body::{Body, Bytes},
-    extract::State,
-    http::{Response, StatusCode},
-    response::IntoResponse,
-};
+use axum::{response::IntoResponse, Extension, Json};
+use chrono::Duration;
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    app::AppData,
+    app::AppState,
     err::{Error, ErrorType},
     err_from_type, err_with_context,
 };
 
-use super::{
-    controller::{
-        generate_access_token, get_private_key, get_public_key, get_refresh_token, validate_data,
-        validate_login_request,
-    },
-    utils::double_decrypt,
-};
+use super::controller::verify_user;
 
-pub struct NewDeviceQuery {
-    device_name: String,
-    device_public_key: Vec<u8>,
-}
-
-/// Get the public key of the server
-#[axum::debug_handler]
-pub async fn handshake(State(app_data): State<AppData>) -> Result<impl IntoResponse, Error> {
-    let public_key = get_public_key(&app_data.data_dir).await?;
-    let public_key_vec = Vec::from(&public_key);
-    Ok(Bytes::from(public_key_vec))
-}
-
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 pub struct LoginRequest {
-    pub password_hash: String,
-    pub device_id: String,
+    pub device_name: String,
+    pub key: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
 pub struct LoginResponse {
     pub access_token: String,
     pub refresh_token: String,
 }
 
-/// Register a new device
-/// Read the public key of the device, and the login request data double encrypted
-/// Recieve access and refresh token
-#[axum::debug_handler]
-pub async fn register(
-    State(app_data): State<AppData>,
-    body: axum::body::Bytes,
-) -> Result<impl IntoResponse, impl IntoResponse> {
-    let device_public_key = Vec::from(&body[0..512]);
-    let server_public_key = get_private_key(&app_data.data_dir).await?;
-    let login_request_encrypted = Vec::from(&body[512..]);
-    let login_request = double_decrypt::<LoginRequest>(
-        &server_public_key,
-        &device_public_key,
-        login_request_encrypted,
-    )
-    .await?;
+#[derive(Deserialize, Serialize)]
+pub struct Claims {
+    pub sub: String,
+    pub exp: usize,
+}
 
-    if validate_login_request(&app_data.data_dir, &login_request).await? {
-        let access_token = generate_access_token(&device_public_key).await?;
-        let refresh_token = get_refresh_token(&device_public_key).await?;
-        let login_response = LoginResponse {
+#[axum_macros::debug_handler]
+pub async fn login(
+    Extension(state): Extension<AppState>,
+    Json(login_info): Json<LoginRequest>,
+) -> Result<impl IntoResponse, impl IntoResponse> {
+    if verify_user(&login_info, &state.password_hash) {
+        let access_claims = Claims {
+            sub: login_info.device_name.clone(),
+            exp: (chrono::Utc::now() + Duration::seconds(30)).timestamp() as usize,
+        };
+
+        let access_token = match encode(
+            &Header::default(),
+            &access_claims,
+            &EncodingKey::from_secret(login_info.key.as_bytes()),
+        ) {
+            Ok(token) => token,
+            Err(e) => {
+                println!("Erron creating token: {}", e);
+                return Err(err_with_context!(e, "Error creating access token"));
+            }
+        };
+
+        let refresh_claims = Claims {
+            sub: login_info.device_name,
+            exp: (chrono::Utc::now() + Duration::days(7)).timestamp() as usize,
+        };
+
+        let refresh_token = match encode(
+            &Header::default(),
+            &refresh_claims,
+            &EncodingKey::from_secret(login_info.key.as_bytes()),
+        ) {
+            Ok(token) => token,
+            Err(e) => {
+                println!("Erron creating token: {}", e);
+                return Err(err_with_context!(e, "Error creating refresh token"));
+            }
+        };
+
+        Ok(Json(LoginResponse {
             access_token,
             refresh_token,
-        };
-        Ok(Response::builder()
-            .status(StatusCode::OK)
-            .body(
-                serde_json::to_string(&login_response)
-                    .map_err(|e| err_with_context!(e, "Failed to serialize response"))?,
-            )
-            .map_err(|e| err_with_context!(e, "Failed to build response"))?)
+        }))
     } else {
         Err(err_from_type!(ErrorType::Unauthorized))
     }
 }
 
-/// Get the access token in case the refresh token is active
-#[axum::debug_handler]
-pub async fn get_access_token(
-    State(data): State<AppData>,
-    body: String,
+#[axum_macros::debug_handler]
+pub async fn refresh_token(
+    Extension(state): Extension<AppState>,
+    token: String,
 ) -> Result<impl IntoResponse, impl IntoResponse> {
-    match validate_data(&data.data_dir, &body).await {
-        Ok(login_response) => Ok(Response::builder()
-            .status(StatusCode::OK)
-            .body(
-                serde_json::to_string(&login_response)
-                    .map_err(|e| err_with_context!(e, "Failed to serialize response"))?,
+    match decode::<Claims>(
+        &token,
+        &DecodingKey::from_secret(state.password_hash.as_bytes()),
+        &Default::default(),
+    ) {
+        Ok(_) => {
+            let access_claims = Claims {
+                sub: token.clone(),
+                exp: (chrono::Utc::now() + Duration::seconds(30)).timestamp() as usize,
+            };
+
+            let access_token = encode(
+                &Header::default(),
+                &access_claims,
+                &EncodingKey::from_secret(state.password_hash.as_bytes()),
             )
-            .map_err(|e| err_with_context!(e, "Failed to build response"))?),
-        Err(e) => Err(err_from_type!(ErrorType::Unauthorized, "{}", e)),
+            .map_err(|e| err_with_context!(e, "Error creating access token"))?;
+
+            let refresh_claims = Claims {
+                sub: token,
+                exp: (chrono::Utc::now() + Duration::days(7)).timestamp() as usize,
+            };
+
+            let refresh_token = encode(
+                &Header::default(),
+                &refresh_claims,
+                &EncodingKey::from_secret(state.password_hash.as_bytes()),
+            )
+            .map_err(|e| err_with_context!(e, "Error creating refresh token"))?;
+
+            Ok(Json(LoginResponse {
+                access_token,
+                refresh_token,
+            }))
+        }
+        Err(e) => {
+            println!("Erron decoding token: {}", e);
+            Err(err_from_type!(
+                ErrorType::Unauthorized,
+                "Unauthorized Access on token refresh"
+            ))
+        }
     }
 }

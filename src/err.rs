@@ -5,7 +5,6 @@ use axum::{
     http::{Response, StatusCode},
     response::IntoResponse,
 };
-use rsa::pkcs8::der::zeroize::Zeroizing;
 
 #[macro_export]
 macro_rules! err_from_type {
@@ -49,14 +48,13 @@ pub enum ErrorType {
     AxumError(axum::http::Error),
     SerdeError(serde_json::Error),
     Tokio(tokio::io::Error),
-    Rsa(rsa::errors::Error),
-    JWT(jsonwebtoken::errors::Error),
+    Jwt(jsonwebtoken::errors::Error),
     Chrono,
     IdenticalBlockType,
     NotFound,
     InternalRustError,
+    TokenExpired,
     Unauthorized,
-    NotImplemented,
 }
 
 impl Display for ErrorType {
@@ -65,14 +63,13 @@ impl Display for ErrorType {
             ErrorType::AxumError(error) => write!(f, "Axum error: {}", error),
             ErrorType::SerdeError(error) => write!(f, "Serde error: {}", error),
             ErrorType::Tokio(error) => write!(f, "Tokio error: {}", error),
-            ErrorType::Rsa(error) => write!(f, "RSA error: {}", error),
-            ErrorType::JWT(error) => write!(f, "JWT error: {}", error),
+            ErrorType::Jwt(error) => write!(f, "JWT error: {}", error),
             ErrorType::Chrono => write!(f, "Chrono error"),
             ErrorType::IdenticalBlockType => write!(f, "Blocktypes Identical"),
             ErrorType::NotFound => write!(f, "Timeblock Not Found"),
             ErrorType::InternalRustError => write!(f, "Internal Rust error"),
+            ErrorType::TokenExpired => write!(f, "Access Token timed out"),
             ErrorType::Unauthorized => write!(f, "Unauthorized Access"),
-            ErrorType::NotImplemented => write!(f, "Not Implemented"),
         }
     }
 }
@@ -158,26 +155,8 @@ impl From<chrono::ParseError> for ErrorType {
     }
 }
 
-impl From<rsa::errors::Error> for ErrorType {
-    fn from(err: rsa::errors::Error) -> Self {
-        ErrorType::Rsa(err)
-    }
-}
-
-impl From<rsa::pkcs1::Error> for ErrorType {
-    fn from(err: rsa::pkcs1::Error) -> Self {
-        ErrorType::Rsa(err.into())
-    }
-}
-
-impl From<Zeroizing<String>> for ErrorType {
-    fn from(_err: Zeroizing<String>) -> Self {
-        ErrorType::InternalRustError
-    }
-}
-
 impl From<jsonwebtoken::errors::Error> for ErrorType {
     fn from(err: jsonwebtoken::errors::Error) -> Self {
-        ErrorType::JWT(err.into())
+        ErrorType::Jwt(err)
     }
 }
