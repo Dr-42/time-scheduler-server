@@ -11,11 +11,11 @@ use tokio::net::TcpListener;
 
 mod analysis;
 mod app;
+mod auth;
 mod blocktype;
 mod currentblock;
 mod err;
 mod handlers;
-mod security;
 mod timeblock;
 
 pub async fn run(
@@ -47,12 +47,12 @@ pub async fn run(
         .route("/get", get(handlers::get_current_block));
 
     // NOTE: User management routes
-    let security_routes = Router::new()
-        .route("/handshake", get(security::handlers::handshake))
-        .route("/new", post(security::handlers::new_device))
-        .route("/login", post(security::handlers::device_login));
+    let auth_routes = Router::new()
+        .route("/handshake", get(auth::handlers::handshake))
+        .route("/device", post(auth::handlers::register))
+        .route("/info", post(auth::handlers::get_access_token))
 
-    let security_route = Router::new().nest("/user", security_routes);
+    let security_route = Router::new().nest("/user", auth_routes);
 
     // Main application routes
     let routes = Router::new()
@@ -63,7 +63,7 @@ pub async fn run(
         .route("/analysis", get(handlers::get_analysis)) // Analysis route
         .layer(from_fn_with_state(
             data.clone(),
-            security::middleware::auth_middleware,
+            auth::middleware::auth_middleware,
         ))
         .nest("/security", security_route)
         .with_state(data);

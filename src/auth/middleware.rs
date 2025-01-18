@@ -8,9 +8,9 @@ use axum::{
 
 use crate::{
     app::AppData,
+    auth::controller::verify_token,
     err::{Error, ErrorType},
     err_from_type, err_with_context,
-    security::implementation::verify_token,
 };
 
 pub async fn auth_middleware(

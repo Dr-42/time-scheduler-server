@@ -8,15 +8,17 @@ authors = ["Dr-42"]
 repository = "https://github.com/Dr-42/time-scheduler-server"
 
 [dependencies]
-axum = "0.8.1"
-tower = "0.5.2"
+axum = { version = "0.8.1", features = ["macros"] }
+axum-macros = "0.5.0"
 sha256 = "1.5.0"
 rpassword = "7.3.1"
 tokio = { version = "1.42.0", features = ["full"] }
 chrono = { version = "0.4.39", features = ["serde"] }
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.134"
+rand = "0.8.5"
 rsa = "0.9.7"
+jsonwebtoken = "9.3.0"
 
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
