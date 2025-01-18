@@ -1,4 +1,3 @@
-#![allow(unused)]
 use std::path::Path;
 
 use rsa::{RsaPrivateKey, RsaPublicKey};
@@ -16,7 +15,14 @@ struct KeyPair {
 }
 
 fn get_key_pair(data_dir: &Path) -> Result<KeyPair, Error> {
-    todo!()
+    let private_key_path = data_dir.join("private_key.pem");
+    let public_key_path = data_dir.join("public_key.pem");
+
+    if !private_key_path.exists() || !public_key_path.exists() {
+        todo!()
+    } else {
+        todo!()
+    }
 }
 
 pub async fn get_public_key(data_dir: &Path) -> Result<[u8; 512], Error> {
@@ -50,5 +56,9 @@ pub async fn validate_login_request(
 }
 
 pub async fn validate_data(data_dir: &Path, jwt: &str) -> Result<LoginResponse, Error> {
+    todo!()
+}
+
+pub async fn verify_token(data_dir: &Path, jwt: &str) -> Result<bool, Error> {
     todo!()
 }

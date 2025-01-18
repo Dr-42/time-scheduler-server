@@ -1,5 +1,5 @@
 use axum::{
-    body::Body,
+    body::{Body, Bytes},
     extract::State,
     http::{Response, StatusCode},
     response::IntoResponse,
@@ -27,12 +27,10 @@ pub struct NewDeviceQuery {
 
 /// Get the public key of the server
 #[axum::debug_handler]
-pub async fn handshake(
-    State(app_data): State<AppData>,
-) -> Result<impl IntoResponse, impl IntoResponse> {
+pub async fn handshake(State(app_data): State<AppData>) -> Result<impl IntoResponse, Error> {
     let public_key = get_public_key(&app_data.data_dir).await?;
-    let body = Body::from(public_key.to_vec());
-    Ok(public_key)
+    let public_key_vec = Vec::from(&public_key);
+    Ok(Bytes::from(public_key_vec))
 }
 
 #[derive(Debug, Deserialize)]
@@ -90,12 +88,14 @@ pub async fn get_access_token(
     State(data): State<AppData>,
     body: String,
 ) -> Result<impl IntoResponse, impl IntoResponse> {
-    let login_response = validate_data(&data.data_dir, &body).await?;
-    Ok(Response::builder()
-        .status(StatusCode::OK)
-        .body(
-            serde_json::to_string(&login_response)
-                .map_err(|e| err_with_context!(e, "Failed to serialize response"))?,
-        )
-        .map_err(|e| err_with_context!(e, "Failed to build response"))?)
+    match validate_data(&data.data_dir, &body).await {
+        Ok(login_response) => Ok(Response::builder()
+            .status(StatusCode::OK)
+            .body(
+                serde_json::to_string(&login_response)
+                    .map_err(|e| err_with_context!(e, "Failed to serialize response"))?,
+            )
+            .map_err(|e| err_with_context!(e, "Failed to build response"))?),
+        Err(e) => Err(err_from_type!(ErrorType::Unauthorized, "{}", e)),
+    }
 }

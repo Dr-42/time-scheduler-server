@@ -5,6 +5,7 @@ use axum::{
     http::{Response, StatusCode},
     response::IntoResponse,
 };
+use rsa::pkcs8::der::zeroize::Zeroizing;
 
 #[macro_export]
 macro_rules! err_from_type {
@@ -50,7 +51,6 @@ pub enum ErrorType {
     Tokio(tokio::io::Error),
     Rsa(rsa::errors::Error),
     JWT(jsonwebtoken::errors::Error),
-    ByteReader,
     Chrono,
     IdenticalBlockType,
     NotFound,

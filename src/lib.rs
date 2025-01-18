@@ -50,7 +50,7 @@ pub async fn run(
     let auth_routes = Router::new()
         .route("/handshake", get(auth::handlers::handshake))
         .route("/device", post(auth::handlers::register))
-        .route("/info", post(auth::handlers::get_access_token))
+        .route("/info", post(auth::handlers::get_access_token));
 
     let security_route = Router::new().nest("/user", auth_routes);
 
