@@ -14,15 +14,13 @@ mod app;
 mod auth;
 mod blocktype;
 mod currentblock;
-mod err;
+pub mod err;
 mod handlers;
 mod timeblock;
 
-pub async fn run(
-    port: u16,
-    password_hash: String,
-    data_dir: PathBuf,
-) -> Result<(), Box<dyn std::error::Error>> {
+use err::Error;
+
+pub async fn run(port: u16, password_hash: String, data_dir: PathBuf) -> Result<(), Error> {
     let ip = format!("0.0.0.0:{}", port);
     let state = AppState::init(password_hash).await;
     let data = AppData::init(data_dir).await;
@@ -54,7 +52,11 @@ pub async fn run(
         .layer(Extension(state.clone()))
         .with_state(data);
 
-    let listener = TcpListener::bind(&ip).await?;
-    axum::serve(listener, routes).await?;
+    let listener = TcpListener::bind(&ip)
+        .await
+        .map_err(|e| err_with_context!(e, "Failed to bind"))?;
+    axum::serve(listener, routes)
+        .await
+        .map_err(|e| err_with_context!(e, "Failed to start server"))?;
     Ok(())
 }

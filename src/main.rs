@@ -100,5 +100,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         password
     };
 
-    app::run(port, password, data_dir).await
+    if let Err(e) = app::run(port, password, data_dir).await {
+        eprintln!("{}", e);
+    };
+    Ok(())
 }
