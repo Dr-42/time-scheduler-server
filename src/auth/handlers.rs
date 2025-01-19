@@ -1,4 +1,9 @@
-use axum::{response::IntoResponse, Extension, Json};
+use axum::{
+    body::Body,
+    http::{Response, StatusCode},
+    response::IntoResponse,
+    Extension, Json,
+};
 use chrono::Duration;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
@@ -9,11 +14,13 @@ use crate::{
     err_from_type, err_with_context,
 };
 
-use super::controller::verify_user;
+use super::{
+    controller::{verify_token, verify_user},
+    middleware::TokenState,
+};
 
 #[derive(Deserialize)]
 pub struct LoginRequest {
-    pub device_name: String,
     pub key: String,
 }
 
@@ -25,7 +32,6 @@ pub struct LoginResponse {
 
 #[derive(Deserialize, Serialize)]
 pub struct Claims {
-    pub sub: String,
     pub exp: usize,
 }
 
@@ -36,7 +42,6 @@ pub async fn login(
 ) -> Result<impl IntoResponse, impl IntoResponse> {
     if verify_user(&login_info, &state.password_hash) {
         let access_claims = Claims {
-            sub: login_info.device_name.clone(),
             exp: (chrono::Utc::now() + Duration::seconds(30)).timestamp() as usize,
         };
 
@@ -53,7 +58,6 @@ pub async fn login(
         };
 
         let refresh_claims = Claims {
-            sub: login_info.device_name,
             exp: (chrono::Utc::now() + Duration::days(7)).timestamp() as usize,
         };
 
@@ -90,7 +94,6 @@ pub async fn refresh_token(
     ) {
         Ok(_) => {
             let access_claims = Claims {
-                sub: token.clone(),
                 exp: (chrono::Utc::now() + Duration::seconds(30)).timestamp() as usize,
             };
 
@@ -102,7 +105,6 @@ pub async fn refresh_token(
             .map_err(|e| err_with_context!(e, "Error creating access token"))?;
 
             let refresh_claims = Claims {
-                sub: token,
                 exp: (chrono::Utc::now() + Duration::days(7)).timestamp() as usize,
             };
 
@@ -125,5 +127,30 @@ pub async fn refresh_token(
                 "Unauthorized Access on token refresh"
             ))
         }
+    }
+}
+
+#[axum_macros::debug_handler]
+pub async fn check_token(
+    Extension(state): Extension<AppState>,
+    token: String,
+) -> Result<impl IntoResponse, impl IntoResponse> {
+    match verify_token(&token, &state.password_hash) {
+        Ok(token_state) => match token_state {
+            TokenState::Valid => Ok(StatusCode::OK),
+            TokenState::Expired => Err(Response::builder()
+                .status(StatusCode::NETWORK_AUTHENTICATION_REQUIRED)
+                .body(Body::from(
+                    err_from_type!(ErrorType::TokenExpired, "Access token timed out").to_string(),
+                ))
+                .map_err(|e| err_with_context!(e, "Building for unauthorized request"))),
+            TokenState::Unauthorized => Err(Response::builder()
+                .status(StatusCode::UNAUTHORIZED)
+                .body(Body::from(
+                    err_from_type!(ErrorType::Unauthorized, "Unauthorized request").to_string(),
+                ))
+                .map_err(|e| err_with_context!(e, "Building for unauthorized request"))),
+        },
+        Err(e) => Err(Err(e)),
     }
 }

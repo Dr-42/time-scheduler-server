@@ -28,10 +28,6 @@ pub async fn run(
     let data = AppData::init(data_dir).await;
 
     let routes = Router::new()
-        // Auth
-        .route("/auth/login", post(auth::handlers::login))
-        .route("/auth/refresh", post(auth::handlers::refresh_token))
-        .layer(Extension(state.clone()))
         // Main home state for today
         .route("/state", get(handlers::get_entire_state))
         // Block types
@@ -51,6 +47,11 @@ pub async fn run(
             state.clone(),
             auth::middleware::auth_middleware,
         ))
+        // Auth
+        .route("/auth/login", post(auth::handlers::login))
+        .route("/auth/refresh", post(auth::handlers::refresh_token))
+        .route("/auth/check", post(auth::handlers::check_token))
+        .layer(Extension(state.clone()))
         .with_state(data);
 
     let listener = TcpListener::bind(&ip).await?;
