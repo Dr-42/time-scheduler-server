@@ -99,7 +99,18 @@ impl Display for Error {
 impl IntoResponse for Error {
     #[allow(clippy::unwrap_used)]
     fn into_response(self) -> Response<Body> {
-        let status_code = StatusCode::INTERNAL_SERVER_ERROR;
+        let status_code = match self.error_type {
+            ErrorType::AxumError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorType::SerdeError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorType::Tokio(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorType::Jwt(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorType::Chrono => StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorType::IdenticalBlockType => StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorType::NotFound => StatusCode::NOT_FOUND,
+            ErrorType::InternalRustError => StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorType::TokenExpired => StatusCode::NETWORK_AUTHENTICATION_REQUIRED,
+            ErrorType::Unauthorized => StatusCode::UNAUTHORIZED,
+        };
         Response::builder()
             .status(status_code)
             .body(Body::from(self.to_string()))
