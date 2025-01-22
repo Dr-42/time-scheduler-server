@@ -16,6 +16,7 @@ mod blocktype;
 mod currentblock;
 pub mod err;
 mod handlers;
+mod sync;
 mod timeblock;
 
 use err::Error;
@@ -41,6 +42,10 @@ pub async fn run(port: u16, password_hash: String, data_dir: PathBuf) -> Result<
         .route("/currentblock/change", post(handlers::change_current_block))
         // Analysis
         .route("/analysis", get(handlers::get_analysis))
+        // Last updated on
+        .route("/lastupdated", get(handlers::get_last_update))
+        // Sync
+        .route("/sync", post(handlers::sync))
         .layer(from_fn_with_state(
             state.clone(),
             auth::middleware::auth_middleware,

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use axum::{
     body::Body,
     extract::{Query, State},
@@ -5,7 +7,7 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use chrono::{DateTime, Local, NaiveTime};
+use chrono::{DateTime, Local, NaiveDate, NaiveTime};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -15,6 +17,7 @@ use crate::{
     currentblock::CurrentBlock,
     err::{Error, ErrorType},
     err_from_type, err_with_context,
+    sync::Sync,
     timeblock::{AdjustTimeBlockQuery, SplitTimeBlockQuery, TimeBlock},
 };
 
@@ -228,4 +231,37 @@ pub async fn get_analysis(
         .header("Content-Type", "application/json")
         .body(Body::from(response_body))
         .map_err(|e| err_with_context!(e, "Building response for analysis data"))
+}
+
+pub async fn get_last_update(State(data): State<AppData>) -> Result<impl IntoResponse, Error> {
+    println!("Getting last update");
+    let last_update_path = data.data_dir.join("last_update.txt");
+    let last_update = tokio::fs::read_to_string(&last_update_path)
+        .await
+        .map_err(|e| err_with_context!(e, "Reading last_update.txt"))?;
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/json")
+        .body(Body::from(last_update))
+        .map_err(|e| err_with_context!(e, "Building response for last update"))
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct SyncBody {
+    time_blocks: HashMap<NaiveDate, Vec<TimeBlock>>,
+    current_block: CurrentBlock,
+    block_types: Vec<BlockType>,
+}
+
+pub async fn sync(
+    State(app_data): State<AppData>,
+    Json(data): Json<SyncBody>,
+) -> Result<impl IntoResponse, Error> {
+    println!("Syncing data");
+    BlockType::sync(&app_data.data_dir, data.block_types).await?;
+    TimeBlock::sync(&app_data.data_dir, data.time_blocks).await?;
+    Response::builder()
+        .status(StatusCode::OK)
+        .body(Body::from("Synced"))
+        .map_err(|e| err_with_context!(e, "Building response for syncing data"))
 }
