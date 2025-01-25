@@ -55,6 +55,8 @@ pub enum ErrorType {
     InternalRustError,
     TokenExpired,
     Unauthorized,
+    NoPassword,
+    NotInitialized,
 }
 
 impl Display for ErrorType {
@@ -70,6 +72,8 @@ impl Display for ErrorType {
             ErrorType::InternalRustError => write!(f, "Internal Rust error"),
             ErrorType::TokenExpired => write!(f, "Access Token timed out"),
             ErrorType::Unauthorized => write!(f, "Unauthorized Access"),
+            ErrorType::NoPassword => write!(f, "No Password"),
+            ErrorType::NotInitialized => write!(f, "Not Initialized"),
         }
     }
 }
@@ -110,6 +114,8 @@ impl IntoResponse for Error {
             ErrorType::InternalRustError => StatusCode::INTERNAL_SERVER_ERROR,
             ErrorType::TokenExpired => StatusCode::NETWORK_AUTHENTICATION_REQUIRED,
             ErrorType::Unauthorized => StatusCode::UNAUTHORIZED,
+            ErrorType::NoPassword => StatusCode::PRECONDITION_REQUIRED,
+            ErrorType::NotInitialized => StatusCode::SERVICE_UNAVAILABLE,
         };
         Response::builder()
             .status(status_code)
@@ -169,5 +175,11 @@ impl From<chrono::ParseError> for ErrorType {
 impl From<jsonwebtoken::errors::Error> for ErrorType {
     fn from(err: jsonwebtoken::errors::Error) -> Self {
         ErrorType::Jwt(err)
+    }
+}
+
+impl From<tokio::task::JoinError> for ErrorType {
+    fn from(_err: tokio::task::JoinError) -> Self {
+        ErrorType::InternalRustError
     }
 }

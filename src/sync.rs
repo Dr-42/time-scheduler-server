@@ -44,7 +44,7 @@ impl Sync<SyncTimeBlock> for TimeBlock {
     async fn sync(data_dir: &Path, incoming_data: SyncTimeBlock) -> Result<(), Error> {
         // Convert the incoming data into an IndexMap for sorting by date.
         let mut index_map: IndexMap<NaiveDate, Vec<TimeBlock>> = IndexMap::from_iter(incoming_data);
-        index_map.sort_keys();
+        index_map.sort_unstable_keys();
 
         // Load the current block information from the directory.
         let self_current_block = CurrentBlock::get(data_dir).await?;

@@ -1,6 +1,6 @@
 use std::{env, path::PathBuf};
 
-use time_scheduler_server as app;
+use time_scheduler_server::{self as app, err::ErrorType};
 
 macro_rules! password_input {
     ($($fmt:expr),*) => {
@@ -90,18 +90,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let password_path = data_dir.join("password.txt");
-    let password = if password_path.exists() {
-        std::fs::read_to_string(password_path)?.trim().to_string()
-    } else {
-        let password = password_input!("Enter password: ");
-        let hash = sha256::digest(&password);
-        std::fs::write(password_path, hash)?;
-        password
-    };
-
-    if let Err(e) = app::run(port, password, data_dir).await {
-        eprintln!("{}", e);
-    };
+    let mut app = app::App::new(port, data_dir);
+    app.init().await.map_err(|e| e.to_string())?;
+    if let Err(e) = app.run().await {
+        if let ErrorType::NoPassword = e.error_type {
+            let password = password_input!("Enter password: ");
+            let err = app.set_password(password).await.err();
+            if let Some(err) = err {
+                eprintln!("{}", err);
+            }
+            app.run().await.map_err(|e| e.to_string())?;
+        } else {
+            eprintln!("{}", e);
+        }
+    }
     Ok(())
 }
