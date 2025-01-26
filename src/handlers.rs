@@ -15,8 +15,8 @@ use crate::{
     app::AppData,
     blocktype::{BlockType, NewBlockType, PushNew},
     currentblock::CurrentBlock,
-    err::{Error, ErrorType},
     err_from_type, err_with_context,
+    error::{Error, ErrorType},
     sync::Sync,
     timeblock::{AdjustTimeBlockQuery, SplitTimeBlockQuery, TimeBlock},
 };

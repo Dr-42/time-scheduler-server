@@ -1,6 +1,6 @@
 use std::{env, path::PathBuf};
 
-use time_scheduler_server::{self as app, err::ErrorType};
+use time_scheduler_server::{self as app, error::ErrorType};
 
 macro_rules! password_input {
     ($($fmt:expr),*) => {

@@ -4,8 +4,8 @@ use chrono::{DateTime, Local, NaiveDate, NaiveTime};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    err::{Error, ErrorType},
     err_from_type, err_with_context,
+    error::{Error, ErrorType},
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]

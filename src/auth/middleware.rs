@@ -9,8 +9,8 @@ use axum::{
 use crate::{
     app::AppState,
     auth::controller::verify_token,
-    err::{Error, ErrorType},
     err_from_type, err_with_context,
+    error::{Error, ErrorType},
 };
 
 pub enum TokenState {

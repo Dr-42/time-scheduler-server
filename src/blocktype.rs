@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use crate::{
-    err::{Error, ErrorType},
     err_with_context,
+    error::{Error, ErrorType},
 };
 use serde::{Deserialize, Serialize};
 

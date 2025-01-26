@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-use crate::{err::Error, err_with_context};
+use crate::{err_with_context, error::Error};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CurrentBlock {

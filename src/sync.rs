@@ -6,8 +6,8 @@ use indexmap::IndexMap;
 
 use crate::blocktype::BlockType;
 use crate::currentblock::CurrentBlock;
-use crate::err::{Error, ErrorType};
 use crate::err_from_type;
+use crate::error::{Error, ErrorType};
 use crate::timeblock::TimeBlock;
 
 // Define a trait `Sync` that provides an asynchronous `sync` function for synchronizing data.

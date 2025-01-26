@@ -4,8 +4,8 @@ use std::{collections::HashMap, path::Path, time::Duration};
 
 use crate::{
     blocktype::BlockType,
-    err::{Error, ErrorType},
     err_from_type, err_with_context,
+    error::{Error, ErrorType},
     timeblock::TimeBlock,
 };
 

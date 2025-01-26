@@ -15,12 +15,12 @@ mod app;
 mod auth;
 mod blocktype;
 mod currentblock;
-pub mod err;
+pub mod error;
 mod handlers;
 mod sync;
 mod timeblock;
 
-use err::{Error, ErrorType};
+use error::{Error, ErrorType};
 
 pub struct App {
     port: u16,

@@ -1,6 +1,6 @@
 use jsonwebtoken::{decode, DecodingKey};
 
-use crate::err::Error;
+use crate::error::Error;
 
 use super::{
     handlers::{Claims, LoginRequest},

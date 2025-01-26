@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     app::AppState,
-    err::{Error, ErrorType},
     err_from_type, err_with_context,
+    error::{Error, ErrorType},
 };
 
 use super::{
